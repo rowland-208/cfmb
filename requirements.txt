@@ -1,0 +1,7 @@
+audioop-lts; python_version>='3.13'
+beautifulsoup4
+discord
+ollama
+requests
+pydantic
+python-dotenv
