@@ -1,8 +1,8 @@
 #!/bin/bash
-if [ ! -d venv ]; then
-    uv venv venv --python=python3
+if [ ! -d venv-test ]; then
+    uv venv venv-test --python=python3
 fi
-source venv/bin/activate
+source venv-test/bin/activate
 
 uv pip install -r requirements-test.txt
 
