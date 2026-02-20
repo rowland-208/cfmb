@@ -1,3 +1,4 @@
+import asyncio
 import re
 import subprocess
 
@@ -15,11 +16,15 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 db_manager = DatabaseManager(config.DB_NAME)
 llm_client = LLMClient(config.OLLAMA_MODEL)
+llm_queue = asyncio.Queue()
+llm_worker_task = None
 
 
 @client.event
 async def on_ready():
+    global llm_worker_task
     db_manager.initialize_db()
+    llm_worker_task = client.loop.create_task(llm_worker())
     print(f"Bot is online as {client.user}!")
 
 
@@ -158,7 +163,27 @@ async def handle_event_command(message, server_id):
 
 
 async def handle_bot_mention(message, server_id):
-    """Handles messages where the bot is mentioned."""
+    """Enqueues a bot mention for LLM processing."""
+    await llm_queue.put((message, server_id))
+    print(f"Queue: added request (size: {llm_queue.qsize()})")
+
+
+async def llm_worker():
+    """Processes LLM requests from the queue one at a time."""
+    while True:
+        message, server_id = await llm_queue.get()
+        print(f"Queue: processing request (size: {llm_queue.qsize()})")
+        await asyncio.sleep(1)
+        try:
+            await process_llm_request(message, server_id)
+        except Exception as e:
+            print(f"Error processing LLM request: {e}")
+        finally:
+            llm_queue.task_done()
+
+
+async def process_llm_request(message, server_id):
+    """Processes a single LLM request."""
     print("Fetching context...")
     user_content = message.content.replace(str(config.BOT_USER_ID), "Maker bot")
     db_manager.write_message(server_id, "user", user_content)

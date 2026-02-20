@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch, call
 import pytest
@@ -235,7 +236,23 @@ async def test_handle_event_command(
 
 
 @pytest.mark.asyncio
-async def test_handle_bot_mention(
+async def test_handle_bot_mention_enqueues(
+    mock_discord_message, mock_db_manager, mock_llm_client, mock_config
+):
+    bot.config = mock_config
+    bot.llm_queue = asyncio.Queue()
+
+    mock_discord_message.content = f"<@{mock_config.BOT_USER_ID}> Hello"
+    await bot.handle_bot_mention(mock_discord_message, "12345")
+
+    assert bot.llm_queue.qsize() == 1
+    queued_message, queued_server_id = bot.llm_queue.get_nowait()
+    assert queued_message == mock_discord_message
+    assert queued_server_id == "12345"
+
+
+@pytest.mark.asyncio
+async def test_process_llm_request(
     mock_discord_message, mock_db_manager, mock_llm_client, mock_config
 ):
     bot.config = mock_config
@@ -250,7 +267,7 @@ async def test_handle_bot_mention(
             "cfmb.bot.extract_first_url", return_value="http://example.com"
         ) as mock_extract:
 
-            await bot.handle_bot_mention(mock_discord_message, "12345")
+            await bot.process_llm_request(mock_discord_message, "12345")
 
             mock_db_manager.write_message.assert_has_calls(
                 [
@@ -269,7 +286,7 @@ async def test_handle_bot_mention(
 
 
 @pytest.mark.asyncio
-async def test_handle_bot_mention_no_url(
+async def test_process_llm_request_no_url(
     mock_discord_message, mock_db_manager, mock_llm_client, mock_config
 ):
     bot.config = mock_config
@@ -278,14 +295,14 @@ async def test_handle_bot_mention_no_url(
     mock_discord_message.content = f"<@{mock_config.BOT_USER_ID}> Hello"
     with patch("cfmb.bot.get_webpage_text") as mock_get_webpage:
         with patch("cfmb.bot.extract_first_url", return_value=None) as mock_extract:
-            await bot.handle_bot_mention(mock_discord_message, "12345")
+            await bot.process_llm_request(mock_discord_message, "12345")
             print(mock_extract.call_args)
             mock_extract.assert_called_once_with("<@Maker bot> Hello")
             mock_get_webpage.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_handle_bot_mention_llm_error(
+async def test_process_llm_request_llm_error(
     mock_discord_message, mock_db_manager, mock_llm_client, mock_config
 ):
     bot.config = mock_config
@@ -294,7 +311,7 @@ async def test_handle_bot_mention_llm_error(
     mock_llm_client.get_completion.return_value = None  # Simulate an error
     mock_discord_message.content = f"<@{mock_config.BOT_USER_ID}> Hello"
 
-    await bot.handle_bot_mention(mock_discord_message, "12345")
+    await bot.process_llm_request(mock_discord_message, "12345")
 
     mock_discord_message.reply.assert_called_once_with(
         "Sorry, I encountered an error generating a response."
@@ -314,7 +331,7 @@ async def test_handle_bot_mention_llm_error(
 
 
 @pytest.mark.asyncio
-async def test_handle_bot_mention_llm_call_args(
+async def test_process_llm_request_llm_call_args(
     mock_discord_message, mock_db_manager, mock_llm_client, mock_config
 ):
     bot.config = mock_config
@@ -337,7 +354,7 @@ async def test_handle_bot_mention_llm_call_args(
             mock_discord_message.content = (
                 f"<@{mock_config.BOT_USER_ID}> Hello http://example.com"
             )
-            await bot.handle_bot_mention(mock_discord_message, "12345")
+            await bot.process_llm_request(mock_discord_message, "12345")
             expected_messages = [
                 {"role": "system", "content": "System prompt"},
                 {"role": "user", "content": "User message"},
