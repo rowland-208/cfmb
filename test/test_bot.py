@@ -52,6 +52,7 @@ def mock_discord_message():
     mock_message.channel.send = AsyncMock()  # For assertions on send.
     mock_message.channel.typing = MagicMock(return_value=AsyncMock())
     mock_message.add_reaction = AsyncMock()
+    mock_message.attachments = []
     return mock_message
 
 
@@ -362,6 +363,38 @@ async def test_process_llm_request_llm_call_args(
             ]
 
             mock_llm_client.get_completion.assert_called_once_with(expected_messages)
+
+
+@pytest.mark.asyncio
+async def test_process_llm_request_with_image_attachments(
+    mock_discord_message, mock_db_manager, mock_llm_client, mock_config
+):
+    bot.config = mock_config
+    bot.db_manager = mock_db_manager
+    bot.llm_client = mock_llm_client
+    mock_db_manager.get_recent_messages.return_value = [
+        {"role": "user", "content": "User message"}
+    ]
+    mock_db_manager.get_system_prompt.return_value = {
+        "role": "system",
+        "content": "System prompt",
+    }
+
+    image_data = b"fake-image-bytes"
+    mock_attachment = AsyncMock()
+    mock_attachment.content_type = "image/png"
+    mock_attachment.read.return_value = image_data
+    mock_discord_message.attachments = [mock_attachment]
+
+    mock_discord_message.content = f"<@{mock_config.BOT_USER_ID}> Describe this image"
+    with patch("cfmb.bot.extract_first_url", return_value=None):
+        await bot.process_llm_request(mock_discord_message, "12345")
+
+        expected_messages = [
+            {"role": "system", "content": "System prompt"},
+            {"role": "user", "content": "User message", "images": [image_data]},
+        ]
+        mock_llm_client.get_completion.assert_called_once_with(expected_messages)
 
 
 @pytest.mark.asyncio

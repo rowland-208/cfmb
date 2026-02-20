@@ -188,9 +188,17 @@ async def process_llm_request(message, server_id):
     user_content = message.content.replace(str(config.BOT_USER_ID), "Maker bot")
     db_manager.write_message(server_id, "user", user_content)
 
+    image_bytes_list = []
+    for attachment in message.attachments:
+        if attachment.content_type and attachment.content_type.startswith("image/"):
+            image_bytes_list.append(await attachment.read())
+
     context_messages = db_manager.get_recent_messages(server_id, config.CONTEXT_SIZE)
     system_prompt = db_manager.get_system_prompt(server_id)
     context_messages.insert(0, system_prompt)
+
+    if image_bytes_list:
+        context_messages[-1]["images"] = image_bytes_list
 
     if url := extract_first_url(user_content):
         print("Pulling web text...")
