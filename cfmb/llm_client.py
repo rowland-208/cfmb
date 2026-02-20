@@ -4,11 +4,12 @@ import ollama
 class LLMClient:
     def __init__(self, model_name):
         self.model_name = model_name
+        self.async_client = ollama.AsyncClient()
 
-    def get_completion(self, messages):
+    async def get_completion(self, messages):
         """Sends messages to the LLM and returns the response."""
         try:
-            response = ollama.chat(
+            response = await self.async_client.chat(
                 model=self.model_name,
                 messages=messages,
             )

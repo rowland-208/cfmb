@@ -173,7 +173,8 @@ async def handle_bot_mention(message, server_id):
         context_messages.append({"role": "tool", "content": url_text})
 
     print("Running llm...")
-    bot_response_content = llm_client.get_completion(context_messages)
+    async with message.channel.typing():
+        bot_response_content = await llm_client.get_completion(context_messages)
 
     if bot_response_content:
         print("Writing context")

@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch, call
 import pytest
 
@@ -35,7 +36,7 @@ def mock_db_manager():
 @pytest.fixture
 def mock_llm_client():
     mock = MagicMock()
-    mock.get_completion.return_value = "LLM response"
+    mock.get_completion = AsyncMock(return_value="LLM response")
     return mock
 
 
@@ -48,6 +49,7 @@ def mock_discord_message():
     mock_message.content = ""  # Default content
     mock_message.mentions = []  # No mentions default.
     mock_message.channel.send = AsyncMock()  # For assertions on send.
+    mock_message.channel.typing = MagicMock(return_value=AsyncMock())
     mock_message.add_reaction = AsyncMock()
     return mock_message
 
