@@ -179,11 +179,11 @@ async def handle_bot_mention(message, server_id):
     if bot_response_content:
         print("Writing context")
         db_manager.write_message(server_id, "assistant", bot_response_content)
-        await message.channel.send(
+        await message.reply(
             bot_response_content[: config.DISCORD_MAX_MESSAGE_LENGTH]
         )
     else:
-        await message.channel.send(
+        await message.reply(
             "Sorry, I encountered an error generating a response."
         )
 

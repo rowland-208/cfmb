@@ -265,7 +265,7 @@ async def test_handle_bot_mention(
             mock_extract.assert_called_once_with("<@Maker bot> Hello")
             mock_get_webpage.assert_called_once_with("http://example.com")
             mock_llm_client.get_completion.assert_called()  # Check args more closely in sep. test
-            mock_discord_message.channel.send.assert_called_once_with("LLM response")
+            mock_discord_message.reply.assert_called_once_with("LLM response")
 
 
 @pytest.mark.asyncio
@@ -296,7 +296,7 @@ async def test_handle_bot_mention_llm_error(
 
     await bot.handle_bot_mention(mock_discord_message, "12345")
 
-    mock_discord_message.channel.send.assert_called_once_with(
+    mock_discord_message.reply.assert_called_once_with(
         "Sorry, I encountered an error generating a response."
     )
     mock_db_manager.write_message.assert_called_once_with(
