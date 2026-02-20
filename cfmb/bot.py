@@ -145,7 +145,7 @@ async def handle_help_command(message):
     await message.channel.send(
         """
     !system :: Print the system prompt
-!system_set <text> :: Set the system prompt
+!set_system <text> :: Set the system prompt
 !event <optional question> :: Get information about upcoming events. Optional text to ask questions about upcoming events
 !points @user1 @user2 ... :: Get guild points for the requested users including the sender
 !points <value> @user1 @user2 ... :: Add guild points for the requested users, only available for admins
