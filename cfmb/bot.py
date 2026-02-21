@@ -48,31 +48,31 @@ async def on_message(message):
     if "NVDA" in message.content:
         await message.add_reaction("👀")
 
-    if message.content.startswith("!context"):
+    if message.content.startswith("/context"):
         await handle_context_command(message, server_id)
         return
 
-    if message.content.startswith("!events"):
+    if message.content.startswith("/events"):
         await handle_event_command(message, server_id)
         return
 
-    if message.content.startswith("!help"):
+    if message.content.startswith("/help"):
         await handle_help_command(message)
         return
 
-    if message.content.startswith("!points"):
+    if message.content.startswith("/points"):
         await handle_guild_points_command(message)
         return
 
-    if message.content.startswith("!system"):
+    if message.content.startswith("/system"):
         await handle_system_command(message, server_id)
         return
 
-    if message.content.startswith("!set_system"):
+    if message.content.startswith("/set_system"):
         await handle_set_system_command(message, server_id)
         return
 
-    if message.content.startswith("!exec"):
+    if message.content.startswith("/exec"):
         await handle_exec_command(message)
         return
 
@@ -84,7 +84,7 @@ async def on_message(message):
 async def handle_guild_points_command(message):
     valid_user_ids = (config.ADMIN1_USER_ID, config.ADMIN2_USER_ID)
 
-    if match := re.match(r"!points\s+([-+]?\d+)\s+.*", message.content):
+    if match := re.match(r"/points\s+([-+]?\d+)\s+.*", message.content):
         if message.author.id not in valid_user_ids:
             await message.channel.send(f"Nice try {message.author.display_name} 🙄")
             return
@@ -97,7 +97,7 @@ async def handle_guild_points_command(message):
 
         return
 
-    if message.content.startswith("!points"):
+    if message.content.startswith("/points"):
         s = "🏆 Guild Points 🏆"
         points = db_manager.get_member_points(message.author.id)
         s += f"\n{message.author.display_name} --> {points}"
@@ -110,7 +110,7 @@ async def handle_guild_points_command(message):
 
 
 async def handle_context_command(message, server_id):
-    """Handles the !context command."""
+    """Handles the /context command."""
     context = db_manager.get_recent_messages(server_id, config.CONTEXT_SIZE)
     if not context:
         await message.channel.send("None")
@@ -127,15 +127,15 @@ async def handle_context_command(message, server_id):
 
 
 async def handle_system_command(message, server_id):
-    """Handles the !system command."""
+    """Handles the /system command."""
     system_prompt = db_manager.get_system_prompt(server_id)
     system_str = f"System: {system_prompt['content']}"
     await message.channel.send(system_str[: config.DISCORD_MAX_MESSAGE_LENGTH])
 
 
 async def handle_set_system_command(message, server_id):
-    """Handles the !set_system command."""
-    system_prompt_content = message.content.replace("!set_system", "").strip()
+    """Handles the /set_system command."""
+    system_prompt_content = message.content.replace("/set_system", "").strip()
     db_manager.write_system_prompt(server_id, system_prompt_content)
     await message.channel.send("System prompt set")
 
@@ -143,7 +143,7 @@ async def handle_set_system_command(message, server_id):
 async def handle_exec_command(message):
     """Execute command on the host shell"""
     if message.author.id == config.ADMIN2_USER_ID:
-        command = message.content.replace("!exec", "").strip()
+        command = message.content.replace("/exec", "").strip()
         try:
             output = subprocess.check_output(command, shell=True).decode("utf-8")
             await message.channel.send(
@@ -160,11 +160,11 @@ async def handle_exec_command(message):
 async def handle_help_command(message):
     await message.channel.send(
         """
-    !system :: Print the system prompt
-!set_system <text> :: Set the system prompt
-!event <optional question> :: Get information about upcoming events. Optional text to ask questions about upcoming events
-!points @user1 @user2 ... :: Get guild points for the requested users including the sender
-!points <value> @user1 @user2 ... :: Add guild points for the requested users, only available for admins
+    /system :: Print the system prompt
+/set_system <text> :: Set the system prompt
+/event <optional question> :: Get information about upcoming events. Optional text to ask questions about upcoming events
+/points @user1 @user2 ... :: Get guild points for the requested users including the sender
+/points <value> @user1 @user2 ... :: Add guild points for the requested users, only available for admins
 @CFMB <text> :: Mention @CFMB to trigger the CFMB LLM; alternatively reply to a message from CFMB to trigger
     """
     )
