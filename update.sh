@@ -6,7 +6,12 @@ if [ -f /tmp/cfmb_active ]; then
     exit 0
 fi
 
-git pull
+output=$(git pull)
+echo "$output"
+if echo "$output" | grep -q "Already up to date."; then
+    exit 0
+fi
+
 source .venv/bin/activate
 uv pip install -r requirements.txt
 systemctl --user restart cfmb.service
