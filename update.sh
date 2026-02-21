@@ -1,10 +1,10 @@
 #!/bin/bash
 set -e
 
-while [ -f /tmp/cfmb_active ]; do
-    echo "Bot is processing a request, waiting..."
-    sleep 2
-done
+if [ -f /tmp/cfmb_active ]; then
+    echo "Bot is processing a request, aborting update."
+    exit 0
+fi
 
 git pull
 sudo systemctl restart cfmb.service
