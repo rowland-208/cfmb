@@ -7,4 +7,6 @@ if [ -f /tmp/cfmb_active ]; then
 fi
 
 git pull
-sudo systemctl restart cfmb.service
+source venv-main/bin/activate
+uv pip install -r requirements.txt
+systemctl --user restart cfmb.service
