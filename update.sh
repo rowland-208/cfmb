@@ -10,6 +10,7 @@ fi
 output=$(git pull)
 echo "$output"
 if echo "$output" | grep -q "Already up to date."; then
+    echo "Already up to date, skipping update."
     exit 0
 fi
 
