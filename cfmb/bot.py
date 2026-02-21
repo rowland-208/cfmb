@@ -1,7 +1,10 @@
 import asyncio
+import io
 import pathlib
 import re
 import subprocess
+
+from PIL import Image
 
 ACTIVE_FILE = pathlib.Path("/tmp/cfmb_active")
 
@@ -206,7 +209,14 @@ async def process_llm_request(message, server_id):
     image_bytes_list = []
     for attachment in message.attachments:
         if attachment.content_type and attachment.content_type.startswith("image/"):
-            image_bytes_list.append(await attachment.read())
+            data = await attachment.read()
+            if attachment.content_type == "image/gif":
+                frame = Image.open(io.BytesIO(data))
+                frame.seek(0)
+                buf = io.BytesIO()
+                frame.convert("RGB").save(buf, format="PNG")
+                data = buf.getvalue()
+            image_bytes_list.append(data)
 
     context_messages = db_manager.get_recent_messages(server_id, config.CONTEXT_SIZE)
     system_prompt = db_manager.get_system_prompt(server_id)

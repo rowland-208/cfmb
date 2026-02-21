@@ -1,5 +1,6 @@
 audioop-lts; python_version>='3.13'
 beautifulsoup4
+Pillow
 discord
 ollama
 requests
