@@ -111,7 +111,7 @@ async def handle_context_command(message, server_id):
         return
     lines = []
     for m in context:
-        content = m["content"]
+        content = m["content"].replace("\t", " ").replace("\n", " ")
         words = content.split(" ")
         snippet = " ".join(words[:5]) + " ... " + " ".join(words[-5:]) if len(words) > 10 else content
         label = m["username"] or m["role"]
