@@ -106,7 +106,17 @@ async def handle_guild_points_command(message):
 async def handle_context_command(message, server_id):
     """Handles the !context command."""
     context = db_manager.get_recent_messages(server_id, config.CONTEXT_SIZE)
-    context_str = "\n".join([f"{m['role']}: {m['content']}" for m in context]) or "None"
+    if not context:
+        await message.channel.send("None")
+        return
+    lines = []
+    for m in context:
+        content = m["content"]
+        words = content.split(" ")
+        snippet = " ".join(words[:5]) + " ... " + " ".join(words[-5:]) if len(words) > 10 else content
+        label = m["username"] or m["role"]
+        lines.append(f"{label}: {snippet}")
+    context_str = "\n".join(lines)
     await message.channel.send(context_str[-config.DISCORD_MAX_MESSAGE_LENGTH :])
 
 
@@ -186,7 +196,7 @@ async def process_llm_request(message, server_id):
     """Processes a single LLM request."""
     print("Fetching context...")
     user_content = message.content.replace(str(config.BOT_USER_ID), "Maker bot")
-    db_manager.write_message(server_id, "user", user_content)
+    db_manager.write_message(server_id, "user", user_content, username=message.author.display_name)
 
     image_bytes_list = []
     for attachment in message.attachments:

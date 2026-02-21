@@ -18,10 +18,15 @@ class DatabaseManager:
                         server_id TEXT,
                         role TEXT,
                         content TEXT,
+                        username TEXT,
                         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
                     """
                 )
+                try:
+                    cursor.execute("ALTER TABLE messages ADD COLUMN username TEXT")
+                except sqlite3.OperationalError:
+                    pass  # column already exists
                 cursor.execute(
                     """
                     CREATE TABLE IF NOT EXISTS system (
@@ -45,14 +50,14 @@ class DatabaseManager:
         except sqlite3.Error as e:
             print(f"Database initialization error: {e}")
 
-    def write_message(self, server_id, role, content):
+    def write_message(self, server_id, role, content, username=None):
         """Writes a message to the database."""
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "INSERT INTO messages (server_id, role, content) VALUES (?, ?, ?)",
-                    (server_id, role, content),
+                    "INSERT INTO messages (server_id, role, content, username) VALUES (?, ?, ?, ?)",
+                    (server_id, role, content, username),
                 )
         except sqlite3.Error as e:
             print(f"Database write error: {e}")
@@ -76,7 +81,7 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    SELECT role, content FROM messages
+                    SELECT role, content, username FROM messages
                     WHERE server_id = ?
                     ORDER BY timestamp DESC LIMIT ?
                     """,
@@ -84,8 +89,8 @@ class DatabaseManager:
                 )
                 messages = cursor.fetchall()
             return [
-                {"role": role, "content": content}
-                for role, content in reversed(messages)
+                {"role": role, "content": content, "username": username}
+                for role, content, username in reversed(messages)
             ]
         except sqlite3.Error as e:
             print(f"Database read error: {e}")
