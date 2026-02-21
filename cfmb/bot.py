@@ -1,6 +1,9 @@
 import asyncio
+import pathlib
 import re
 import subprocess
+
+ACTIVE_FILE = pathlib.Path("/tmp/cfmb_active")
 
 import discord
 
@@ -185,10 +188,12 @@ async def llm_worker():
         print(f"Queue: processing request (size: {llm_queue.qsize()})")
         await asyncio.sleep(1)
         try:
+            ACTIVE_FILE.touch()
             await process_llm_request(message, server_id)
         except Exception as e:
             print(f"Error processing LLM request: {e}")
         finally:
+            ACTIVE_FILE.unlink(missing_ok=True)
             llm_queue.task_done()
 
 
