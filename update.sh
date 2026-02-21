@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+cd "$(dirname "$0")"
 
 if [ -f /tmp/cfmb_active ]; then
     echo "Bot is processing a request, aborting update."
