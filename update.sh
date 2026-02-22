@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+export PATH="$HOME/.local/bin:/snap/bin:$PATH"
 cd "$(dirname "$0")"
 
 output=$(git pull)
