@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 export PATH="$HOME/.local/bin:/snap/bin:$PATH"
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 cd "$(dirname "$0")"
 
 output=$(git pull)
