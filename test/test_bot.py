@@ -155,7 +155,7 @@ async def test_handle_set_system_command(
 ):
     bot.db_manager = mock_db_manager
     bot.config = mock_config
-    mock_discord_message.content = "!set_system New system prompt"
+    mock_discord_message.content = "/set_system New system prompt"
     await bot.handle_set_system_command(mock_discord_message, "12345")
     mock_db_manager.write_system_prompt.assert_called_once_with(
         "12345", "New system prompt"
@@ -167,7 +167,7 @@ async def test_handle_set_system_command(
 async def test_handle_exec_command_authorized(mock_discord_message, mock_config):
     bot.config = mock_config
     mock_discord_message.author.id = mock_config.ADMIN2_USER_ID
-    mock_discord_message.content = "!exec echo test"
+    mock_discord_message.content = "/exec echo test"
     with patch("subprocess.check_output", return_value=b"test\n") as mock_subprocess:
         await bot.handle_exec_command(mock_discord_message)
         mock_subprocess.assert_called_once_with("echo test", shell=True)
@@ -209,8 +209,8 @@ async def test_handle_help_command(mock_discord_message):
     await bot.handle_help_command(mock_discord_message)
     mock_discord_message.channel.send.assert_called_once()  # Check that a message was sent
     sent_message = mock_discord_message.channel.send.call_args[0][0]
-    assert "!system" in sent_message
-    assert "!points" in sent_message
+    assert "/system" in sent_message
+    assert "/points" in sent_message
 
 
 @pytest.mark.asyncio
@@ -436,7 +436,7 @@ async def test_handle_guild_points_command_get(
     mock_discord_message.author.id = 1
     mock_discord_message.author.display_name = "User1"
     mock_db_manager.get_member_points.return_value = 10
-    mock_discord_message.content = "!points"
+    mock_discord_message.content = "/points"
 
     await bot.handle_guild_points_command(mock_discord_message)
     mock_db_manager.get_member_points.assert_called_with(1)

@@ -77,6 +77,10 @@ async def on_message(message):
         await handle_exec_command(message)
         return
 
+    if message.content.startswith("/generate"):
+        await handle_generate_command(message)
+        return
+
     if client.user in message.mentions:
         await handle_bot_mention(message, server_id, chain_id)
         return
@@ -162,12 +166,37 @@ async def handle_exec_command(message):
         await message.channel.send("You do not have permission to execute commands ❌")
 
 
+async def handle_generate_command(message):
+    """Generates an image from a text prompt using Ollama and posts it to the channel."""
+    if not config.OLLAMA_IMAGE_MODEL:
+        await message.channel.send(
+            "Image generation is not configured. "
+            "Ask an admin to set the `OLLAMA_IMAGE_MODEL` environment variable (e.g. `x/flux2-klein`)."
+        )
+        return
+
+    prompt = message.content.replace("/generate", "", 1).strip()
+    if not prompt:
+        await message.channel.send("Please provide a prompt: `/generate <description>`")
+        return
+
+    async with message.channel.typing():
+        image_bytes = await llm_client.generate_image(prompt, config.OLLAMA_IMAGE_MODEL)
+
+    if image_bytes:
+        file = discord.File(io.BytesIO(image_bytes), filename="generated.png")
+        await message.channel.send(file=file)
+    else:
+        await message.channel.send("Sorry, I encountered an error generating the image.")
+
+
 async def handle_help_command(message):
     await message.channel.send(
         """
     /system :: Print the system prompt
 /set_system <text> :: Set the system prompt
 /event <optional question> :: Get information about upcoming events. Optional text to ask questions about upcoming events
+/generate <description> :: Generate an image from a text description
 /points @user1 @user2 ... :: Get guild points for the requested users including the sender
 /points <value> @user1 @user2 ... :: Add guild points for the requested users, only available for admins
 @CFMB <text> :: Mention @CFMB to trigger the CFMB LLM; alternatively reply to a message from CFMB to trigger

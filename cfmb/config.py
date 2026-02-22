@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 
 from pydantic import BaseModel, field_validator
 from dotenv import load_dotenv
@@ -15,6 +16,7 @@ class Config(BaseModel):
     DISCORD_MAX_MESSAGE_LENGTH: int
     ADMIN1_USER_ID: int
     ADMIN2_USER_ID: int
+    OLLAMA_IMAGE_MODEL: Optional[str] = None
 
     @field_validator(
         "CONTEXT_SIZE",
@@ -42,6 +44,7 @@ class Config(BaseModel):
             DISCORD_MAX_MESSAGE_LENGTH=os.environ["DISCORD_MAX_MESSAGE_LENGTH"],
             ADMIN1_USER_ID=os.environ["ADMIN1_USER_ID"],
             ADMIN2_USER_ID=os.environ["ADMIN2_USER_ID"],
+            OLLAMA_IMAGE_MODEL=os.environ.get("OLLAMA_IMAGE_MODEL") or None,
         )
 
 
