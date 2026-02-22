@@ -26,7 +26,7 @@ Ollama's image generation backend uses MLX and is macOS-only. On Linux with an N
 ```bash
 # Install Docker Engine
 curl -fsSL https://get.docker.com -o get-docker.sh && sudo sh get-docker.sh
-sudo usermod -aG docker $USER && newgrp docker
+sudo usermod -aG docker $USER
 
 # Install NVIDIA Container Toolkit
 curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
@@ -40,9 +40,24 @@ sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
 ```
 
-#### 2. Create the vLLM systemd user service
+> **Important:** Fully log out and log back in (or reboot) after this step so your user account and background `systemd --user` processes inherit the new `docker` group permissions.
+
+#### 2. Configure the environment
+
+Create a hidden environment file to securely store your Hugging Face token (required for gated models):
 
 ```bash
+touch ~/.vllm.env
+chmod 600 ~/.vllm.env
+echo "HF_TOKEN=your_token_here" > ~/.vllm.env
+```
+
+Leave `HF_TOKEN` empty if using open models.
+
+#### 3. Create the vLLM systemd user service
+
+```bash
+sudo loginctl enable-linger $USER
 mkdir -p ~/.config/systemd/user/
 ```
 
@@ -51,8 +66,6 @@ Create `~/.config/systemd/user/vllm.service`:
 ```ini
 [Unit]
 Description=vLLM Docker Container
-After=docker.service
-Requires=docker.service
 
 [Service]
 Restart=always
@@ -61,6 +74,7 @@ ExecStartPre=-/usr/bin/docker rm vllm-server
 ExecStart=/usr/bin/docker run --name vllm-server \
     --gpus all \
     -p 8000:8000 \
+    --env-file %h/.vllm.env \
     -v %h/.cache/huggingface:/root/.cache/huggingface \
     vllm/vllm-openai:latest \
     --model facebook/opt-125m
@@ -70,11 +84,11 @@ ExecStop=/usr/bin/docker stop vllm-server
 WantedBy=default.target
 ```
 
-#### 3. Enable linger and start the service
+Note: User services cannot depend on system-wide services via `Requires=docker.service`, so that directive is intentionally omitted.
+
+#### 4. Enable and start the service
 
 ```bash
-sudo loginctl enable-linger $USER
-
 systemctl --user daemon-reload
 systemctl --user enable vllm.service
 systemctl --user start vllm.service
