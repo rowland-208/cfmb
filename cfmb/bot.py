@@ -44,16 +44,17 @@ async def on_message(message):
         return
 
     server_id = str(message.guild.id)
+    chain_id = resolve_chain_id(message)
 
     if "NVDA" in message.content:
         await message.add_reaction("👀")
 
     if message.content.startswith("/context"):
-        await handle_context_command(message, server_id)
+        await handle_context_command(message, server_id, chain_id)
         return
 
     if message.content.startswith("/events"):
-        await handle_event_command(message, server_id)
+        await handle_event_command(message, server_id, chain_id)
         return
 
     if message.content.startswith("/help"):
@@ -77,7 +78,7 @@ async def on_message(message):
         return
 
     if client.user in message.mentions:
-        await handle_bot_mention(message, server_id)
+        await handle_bot_mention(message, server_id, chain_id)
         return
 
 
@@ -109,19 +110,23 @@ async def handle_guild_points_command(message):
         await message.channel.send(s[: config.DISCORD_MAX_MESSAGE_LENGTH])
 
 
-async def handle_context_command(message, server_id):
+async def handle_context_command(message, server_id, chain_id):
     """Handles the /context command."""
-    context = db_manager.get_recent_messages(server_id, config.CONTEXT_SIZE)
-    if not context:
+    recent_chains = db_manager.get_recent_chains(server_id, limit=4)
+    if not recent_chains:
         await message.channel.send("None")
         return
     lines = []
-    for m in context:
-        content = m["content"].replace("\t", " ").replace("\n", " ")
-        words = content.split(" ")
-        snippet = " ".join(words[:5]) + " ... " + " ".join(words[-5:]) if len(words) > 10 else content
-        label = m["username"] or m["role"]
-        lines.append(f"{label}: {snippet}")
+    for cid in recent_chains:
+        marker = " (current)" if cid == chain_id else ""
+        lines.append(f"--- Chain {cid}{marker} ---")
+        messages = db_manager.get_recent_messages(server_id, cid, limit=6)
+        for m in messages:
+            content = m["content"].replace("\t", " ").replace("\n", " ")
+            words = content.split(" ")
+            snippet = " ".join(words[:5]) + " ... " + " ".join(words[-5:]) if len(words) > 10 else content
+            label = m["username"] or m["role"]
+            lines.append(f"  {label}: {snippet}")
     context_str = "\n".join(lines)
     await message.channel.send(context_str[-config.DISCORD_MAX_MESSAGE_LENGTH :])
 
@@ -170,29 +175,29 @@ async def handle_help_command(message):
     )
 
 
-async def handle_event_command(message, server_id):
+async def handle_event_command(message, server_id, chain_id):
     message.content = (
         "Tell me about events at https://www.meetup.com/cape-fear-makers-guild-meetup-group/ "
         + message.content[7:]
     )
-    await handle_bot_mention(message, server_id)
+    await handle_bot_mention(message, server_id, chain_id)
 
 
-async def handle_bot_mention(message, server_id):
+async def handle_bot_mention(message, server_id, chain_id):
     """Enqueues a bot mention for LLM processing."""
-    await llm_queue.put((message, server_id))
+    await llm_queue.put((message, server_id, chain_id))
     print(f"Queue: added request (size: {llm_queue.qsize()})")
 
 
 async def llm_worker():
     """Processes LLM requests from the queue one at a time."""
     while True:
-        message, server_id = await llm_queue.get()
+        message, server_id, chain_id = await llm_queue.get()
         print(f"Queue: processing request (size: {llm_queue.qsize()})")
         await asyncio.sleep(1)
         try:
             ACTIVE_FILE.touch()
-            await process_llm_request(message, server_id)
+            await process_llm_request(message, server_id, chain_id)
         except Exception as e:
             print(f"Error processing LLM request: {e}")
         finally:
@@ -200,11 +205,19 @@ async def llm_worker():
             llm_queue.task_done()
 
 
-async def process_llm_request(message, server_id):
+def resolve_chain_id(message):
+    """Returns the chain_id for a message by traversing its reply chain."""
+    if message.reference is None:
+        return str(message.id)
+    parent_chain_id = db_manager.get_chain_id(str(message.reference.message_id))
+    return parent_chain_id if parent_chain_id else str(message.reference.message_id)
+
+
+async def process_llm_request(message, server_id, chain_id):
     """Processes a single LLM request."""
     print("Fetching context...")
     user_content = message.content.replace(str(config.BOT_USER_ID), "Maker bot")
-    db_manager.write_message(server_id, "user", user_content, username=message.author.display_name)
+    db_manager.write_message(server_id, chain_id, "user", user_content, username=message.author.display_name, message_id=str(message.id))
 
     image_bytes_list = []
     for attachment in message.attachments:
@@ -218,7 +231,7 @@ async def process_llm_request(message, server_id):
                 data = buf.getvalue()
             image_bytes_list.append(data)
 
-    context_messages = db_manager.get_recent_messages(server_id, config.CONTEXT_SIZE)
+    context_messages = db_manager.get_recent_messages(server_id, chain_id, config.CONTEXT_SIZE)
     system_prompt = db_manager.get_system_prompt(server_id)
     context_messages.insert(0, system_prompt)
 
@@ -236,10 +249,8 @@ async def process_llm_request(message, server_id):
 
     if bot_response_content:
         print("Writing context")
-        db_manager.write_message(server_id, "assistant", bot_response_content)
-        await message.reply(
-            bot_response_content[: config.DISCORD_MAX_MESSAGE_LENGTH]
-        )
+        reply = await message.reply(bot_response_content[: config.DISCORD_MAX_MESSAGE_LENGTH])
+        db_manager.write_message(server_id, chain_id, "assistant", bot_response_content, message_id=str(reply.id))
     else:
         await message.reply(
             "Sorry, I encountered an error generating a response."

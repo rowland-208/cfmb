@@ -41,11 +41,12 @@ def test_initialize_db(db_manager):
 def test_write_and_get_message(db_manager):
     """Test writing a message and retrieving recent messages."""
     server_id = "test_server"
+    chain_id = "test_chain"
     role = "user"
     content = "Hello, world!"
 
-    db_manager.write_message(server_id, role, content)
-    recent_messages = db_manager.get_recent_messages(server_id)
+    db_manager.write_message(server_id, chain_id, role, content)
+    recent_messages = db_manager.get_recent_messages(server_id, chain_id)
 
     assert len(recent_messages) == 1
     assert recent_messages[0]["role"] == role
@@ -67,17 +68,19 @@ def test_write_and_get_system_prompt(db_manager):
 def test_get_recent_messages_limit(db_manager):
     """Test retrieving recent messages with a limit."""
     server_id = "test_server"
+    chain_id = "test_chain"
     for i in range(5):
-        db_manager.write_message(server_id, "user", f"Message {i}")
+        db_manager.write_message(server_id, chain_id, "user", f"Message {i}")
 
-    recent_messages = db_manager.get_recent_messages(server_id, limit=3)
+    recent_messages = db_manager.get_recent_messages(server_id, chain_id, limit=3)
     assert len(recent_messages) == 3
 
 
 def test_get_recent_messages_empty(db_manager):
     """Test retrieving recent messages when there are none."""
     server_id = "test_server"
-    recent_messages = db_manager.get_recent_messages(server_id)
+    chain_id = "test_chain"
+    recent_messages = db_manager.get_recent_messages(server_id, chain_id)
     assert len(recent_messages) == 0
     assert recent_messages == []
 
@@ -111,13 +114,53 @@ def test_get_member_points_default(db_manager):
 
 
 def test_get_recent_messages_order(db_manager):
-    """Test that recent messages are returned in reverse chronological order."""
+    """Test that recent messages are returned in chronological order."""
     server_id = "test_server_order"
-    db_manager.write_message(server_id, "user", "Message 1")
-    db_manager.write_message(server_id, "user", "Message 2")
-    db_manager.write_message(server_id, "user", "Message 3")
+    chain_id = "test_chain"
+    db_manager.write_message(server_id, chain_id, "user", "Message 1")
+    db_manager.write_message(server_id, chain_id, "user", "Message 2")
+    db_manager.write_message(server_id, chain_id, "user", "Message 3")
 
-    recent_messages = db_manager.get_recent_messages(server_id)
+    recent_messages = db_manager.get_recent_messages(server_id, chain_id)
     assert recent_messages[0]["content"] == "Message 3"
     assert recent_messages[1]["content"] == "Message 2"
     assert recent_messages[2]["content"] == "Message 1"
+
+
+def test_get_recent_messages_chain_isolation(db_manager):
+    """Test that messages from different chains are isolated."""
+    server_id = "test_server"
+    db_manager.write_message(server_id, "chain_a", "user", "Chain A message")
+    db_manager.write_message(server_id, "chain_b", "user", "Chain B message")
+
+    messages_a = db_manager.get_recent_messages(server_id, "chain_a")
+    messages_b = db_manager.get_recent_messages(server_id, "chain_b")
+
+    assert len(messages_a) == 1
+    assert messages_a[0]["content"] == "Chain A message"
+    assert len(messages_b) == 1
+    assert messages_b[0]["content"] == "Chain B message"
+
+
+def test_get_chain_id(db_manager):
+    """Test looking up a chain_id by Discord message_id."""
+    db_manager.write_message("server", "chain_abc", "user", "Hello", message_id="msg_111")
+
+    assert db_manager.get_chain_id("msg_111") == "chain_abc"
+    assert db_manager.get_chain_id("msg_999") is None
+
+
+def test_get_recent_chains(db_manager):
+    """Test retrieving the most recently active chains for a server."""
+    server_id = "test_server"
+    db_manager.write_message(server_id, "chain_1", "user", "First")
+    db_manager.write_message(server_id, "chain_2", "user", "Second")
+    db_manager.write_message(server_id, "chain_3", "user", "Third")
+    db_manager.write_message(server_id, "chain_4", "user", "Fourth")
+
+    chains = db_manager.get_recent_chains(server_id, limit=3)
+    assert len(chains) == 3
+    assert "chain_4" in chains
+    assert "chain_3" in chains
+    assert "chain_2" in chains
+    assert "chain_1" not in chains
