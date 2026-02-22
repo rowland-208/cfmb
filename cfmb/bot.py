@@ -44,6 +44,14 @@ async def on_message(message):
         return
 
     server_id = str(message.guild.id)
+    db_manager.write_raw_message(
+        server_id,
+        str(message.id),
+        str(message.author.id),
+        message.author.display_name,
+        message.content,
+    )
+
     chain_id = resolve_chain_id(message)
 
     if "NVDA" in message.content:
@@ -79,6 +87,10 @@ async def on_message(message):
 
     if message.content.startswith("/generate"):
         await handle_generate_command(message)
+        return
+
+    if message.content.startswith("/recall"):
+        await handle_recall_command(message, server_id)
         return
 
     if client.user in message.mentions:
@@ -166,6 +178,30 @@ async def handle_exec_command(message):
         await message.channel.send("You do not have permission to execute commands ❌")
 
 
+async def handle_recall_command(message, server_id):
+    """Handles the /recall command — prints the last N raw messages."""
+    arg = message.content.replace("/recall", "", 1).strip()
+    try:
+        limit = int(arg) if arg else 10
+    except ValueError:
+        await message.channel.send("Usage: `/recall [n]` — n must be an integer")
+        return
+
+    raw = db_manager.get_recent_raw_messages(server_id, limit)
+    if not raw:
+        await message.channel.send("No messages recorded yet.")
+        return
+
+    lines = []
+    for m in raw:
+        content = m["content"].replace("\t", " ").replace("\n", " ")
+        words = content.split(" ")
+        snippet = " ".join(words[:5]) + " ... " + " ".join(words[-5:]) if len(words) > 10 else content
+        lines.append(f"  {m['username']}: {snippet}")
+
+    await message.channel.send("\n".join(lines)[-config.DISCORD_MAX_MESSAGE_LENGTH:])
+
+
 async def handle_generate_command(message):
     """Generates an image from a text prompt using Ollama and posts it to the channel."""
     if not config.OLLAMA_IMAGE_MODEL:
@@ -197,6 +233,7 @@ async def handle_help_command(message):
 /set_system <text> :: Set the system prompt
 /event <optional question> :: Get information about upcoming events. Optional text to ask questions about upcoming events
 /generate <description> :: Generate an image from a text description
+/recall [n] :: Print the last n messages in this server (default 10)
 /points @user1 @user2 ... :: Get guild points for the requested users including the sender
 /points <value> @user1 @user2 ... :: Add guild points for the requested users, only available for admins
 @CFMB <text> :: Mention @CFMB to trigger the CFMB LLM; alternatively reply to a message from CFMB to trigger

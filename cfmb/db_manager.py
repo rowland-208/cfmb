@@ -61,6 +61,19 @@ class DatabaseManager:
                     )
                     """
                 )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS raw_messages (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        server_id TEXT,
+                        message_id TEXT,
+                        user_id TEXT,
+                        username TEXT,
+                        content TEXT,
+                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
         except sqlite3.Error as e:
             print(f"Database initialization error: {e}")
 
@@ -166,6 +179,37 @@ class DatabaseManager:
         except sqlite3.Error as e:
             print(f"Database read error: {e}")
             return default
+
+    def write_raw_message(self, server_id, message_id, user_id, username, content):
+        """Records every incoming message to the raw_messages table."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO raw_messages (server_id, message_id, user_id, username, content) VALUES (?, ?, ?, ?, ?)",
+                    (server_id, message_id, user_id, username, content),
+                )
+        except sqlite3.Error as e:
+            print(f"Database write error: {e}")
+
+    def get_recent_raw_messages(self, server_id, limit=10):
+        """Retrieves the most recent raw messages for a server."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT username, content FROM raw_messages
+                    WHERE server_id = ?
+                    ORDER BY timestamp DESC LIMIT ?
+                    """,
+                    (server_id, limit),
+                )
+                rows = cursor.fetchall()
+            return [{"username": username, "content": content} for username, content in reversed(rows)]
+        except sqlite3.Error as e:
+            print(f"Database read error: {e}")
+            return []
 
     def add_member_points(self, member_id, points):
         """Adds points to a member in the database."""
