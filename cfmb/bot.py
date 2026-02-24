@@ -24,13 +24,24 @@ db_manager = DatabaseManager(config.DB_NAME)
 llm_client = LLMClient(config.OLLAMA_MODEL)
 llm_queue = asyncio.Queue()
 llm_worker_task = None
+emoji_queue = asyncio.Queue()
+emoji_worker_task = None
+
+# Matches common Unicode emoji ranges
+EMOJI_PATTERN = re.compile(
+    "[\U0001F000-\U0001FFFF"
+    "\u2600-\u27BF"
+    "\u2B00-\u2BFF"
+    "]+"
+)
 
 
 @client.event
 async def on_ready():
-    global llm_worker_task
+    global llm_worker_task, emoji_worker_task
     db_manager.initialize_db()
     llm_worker_task = client.loop.create_task(llm_worker())
+    emoji_worker_task = client.loop.create_task(emoji_reaction_worker())
     print(f"Bot is online as {client.user}!")
 
 
@@ -56,6 +67,8 @@ async def on_message(message):
 
     if "NVDA" in message.content:
         await message.add_reaction("👀")
+
+    await emoji_queue.put(message)
 
     if message.content.startswith("/context"):
         await handle_context_command(message, server_id, chain_id)
@@ -271,6 +284,48 @@ async def llm_worker():
             llm_queue.task_done()
 
 
+async def emoji_reaction_worker():
+    """Processes emoji reaction requests from the queue one at a time."""
+    while True:
+        message = await emoji_queue.get()
+        print(f"Emoji queue: processing (size: {emoji_queue.qsize()})")
+        try:
+            await process_emoji_reaction(message)
+        except Exception as e:
+            print(f"Error in emoji reaction worker: {e}")
+        finally:
+            emoji_queue.task_done()
+
+
+async def process_emoji_reaction(message):
+    """Asks the LLM to pick an emoji reaction (~1% of the time) or skip."""
+    prompt_messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a Discord bot that reacts to messages with a single emoji. "
+                "About 1% of the time respond with exactly one emoji character that fits the message. "
+                "If the user seems excited, increase the odds of reacting to 10%. "
+                "The other times respond with exactly the word 'next'. "
+                "Prefer emojis like 😂❤️👏🧠⚒️🤘🚀🤖 but choose whichever fits best. "
+                "Output only the emoji or the word 'next' — nothing else."
+            ),
+        },
+        {"role": "user", "content": message.content},
+    ]
+    response = await llm_client.get_completion(prompt_messages)
+    if not response:
+        return
+    match = EMOJI_PATTERN.search(response)
+    if match:
+        emoji = match.group(0)[0]
+        try:
+            await message.add_reaction(emoji)
+            print(f"Emoji reaction: reacted with {emoji}")
+        except Exception as e:
+            print(f"Emoji reaction: failed to add reaction: {e}")
+
+
 def resolve_chain_id(message):
     """Returns the chain_id for a message by traversing its reply chain."""
     if message.reference is None:
@@ -283,6 +338,16 @@ async def process_llm_request(message, server_id, chain_id):
     """Processes a single LLM request."""
     print("Fetching context...")
     user_content = message.content.replace(str(config.BOT_USER_ID), "Maker bot")
+
+    system_prompt = db_manager.get_system_prompt(server_id)
+
+    print("Moderating message...")
+    mod_response = await llm_client.moderate(user_content)
+    if mod_response and re.search(r"\bblock\b", mod_response, re.IGNORECASE):
+        print(f"Moderation: blocked message from {message.author.display_name}")
+        await message.add_reaction("⚠️")
+        return
+
     db_manager.write_message(server_id, chain_id, "user", user_content, username=message.author.display_name, message_id=str(message.id))
 
     image_bytes_list = []
@@ -298,7 +363,6 @@ async def process_llm_request(message, server_id, chain_id):
             image_bytes_list.append(data)
 
     context_messages = db_manager.get_recent_messages(server_id, chain_id, config.CONTEXT_SIZE)
-    system_prompt = db_manager.get_system_prompt(server_id)
     context_messages.insert(0, system_prompt)
 
     if image_bytes_list:
