@@ -23,23 +23,8 @@ class Config(BaseModel):
     BOT_DISPLAY_NAME: str = "Bot"
     NEWSLETTER_TITLE: str = "Daily Newsletter"
     MEETUP_URL: Optional[str] = None
-    SUMMARY_SYSTEM_PROMPT: str = (
-        "You are a guild update assistant. "
-        "Given a transcript of Discord messages from a single channel, "
-        "write a 3-5 sentence summary in a newsletter/update style that highlights "
-        "key events, announcements, projects, or discussions. "
-        "Be concise and informative. Do not list every message — extract what matters. "
-        "Do not include a title, heading, or channel name at the top — jump straight into the summary."
-    )
-    CURATION_SYSTEM_PROMPT: str = (
-        "You are a newsletter editor. "
-        "You will be given a set of Discord channel summaries, each with a heading and summary text. "
-        "Select the three summaries that contain information other members are most likely to find useful. "
-        "Deprioritize summaries that are primarily casual conversation, small talk, or lack substantive content. "
-        "Return only those three summaries, in order from most to least relevant, "
-        "preserving each channel's heading, summary text, and links exactly as given. "
-        "Do not add commentary, preamble, or any other text."
-    )
+    SUMMARY_SYSTEM_PROMPT: str
+    CURATION_SYSTEM_PROMPT: str
 
     @field_validator(
         "NUM_CLOSEST_MESSAGES",
@@ -76,8 +61,8 @@ class Config(BaseModel):
             BOT_DISPLAY_NAME=os.environ.get("BOT_DISPLAY_NAME", "Bot"),
             NEWSLETTER_TITLE=os.environ.get("NEWSLETTER_TITLE", "Daily Newsletter"),
             MEETUP_URL=os.environ.get("MEETUP_URL") or None,
-            SUMMARY_SYSTEM_PROMPT=os.environ.get("SUMMARY_SYSTEM_PROMPT", Config.model_fields["SUMMARY_SYSTEM_PROMPT"].default),
-            CURATION_SYSTEM_PROMPT=os.environ.get("CURATION_SYSTEM_PROMPT", Config.model_fields["CURATION_SYSTEM_PROMPT"].default),
+            SUMMARY_SYSTEM_PROMPT=os.environ["SUMMARY_SYSTEM_PROMPT"],
+            CURATION_SYSTEM_PROMPT=os.environ["CURATION_SYSTEM_PROMPT"],
         )
 
 
