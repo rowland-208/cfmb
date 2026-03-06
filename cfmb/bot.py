@@ -460,8 +460,11 @@ async def post_summaries(server_id, channel):
         return text.replace("@", "")
 
     # Generate each channel summary and find sources in one pass
+    excluded = set(config.NEWSLETTER_EXCLUDED_CHANNELS.split(",")) if config.NEWSLETTER_EXCLUDED_CHANNELS else set()
     channel_blocks = []
     for cid, data in channels.items():
+        if cid in excluded:
+            continue
         ch_name = data["name"]
         transcript = "\n".join(
             f"{m['username']}: {_clean_content(m['content'])}" for m in data["messages"]

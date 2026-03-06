@@ -25,6 +25,7 @@ class Config(BaseModel):
     MEETUP_URL: Optional[str] = None
     SUMMARY_SYSTEM_PROMPT: str
     CURATION_SYSTEM_PROMPT: str
+    NEWSLETTER_EXCLUDED_CHANNELS: str = ""
 
     @field_validator(
         "NUM_CLOSEST_MESSAGES",
@@ -63,6 +64,7 @@ class Config(BaseModel):
             MEETUP_URL=os.environ.get("MEETUP_URL") or None,
             SUMMARY_SYSTEM_PROMPT=os.environ["SUMMARY_SYSTEM_PROMPT"],
             CURATION_SYSTEM_PROMPT=os.environ["CURATION_SYSTEM_PROMPT"],
+            NEWSLETTER_EXCLUDED_CHANNELS=os.environ.get("NEWSLETTER_EXCLUDED_CHANNELS", ""),
         )
 
 
