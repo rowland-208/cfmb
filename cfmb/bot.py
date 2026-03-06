@@ -744,29 +744,16 @@ async def _build_system_prompt(message, server_id, user_content, id_to_name=None
         system_prompt["content"] += "\n\n## User profile\nThis user has not been active recently and no profile is available."
 
     if config.OLLAMA_EMBEDDING_MODEL:
-        search_prompt = [
-            {
-                "role": "system",
-                "content": (
-                    "Generate a concise search phrase (3-10 words) that captures the key topics "
-                    "of the user's message. Output only the search phrase, nothing else."
-                ),
-            },
-            {"role": "user", "content": user_content},
-        ]
-        search_phrase = await llm_client.get_completion(search_prompt)
-        if search_phrase:
-            search_phrase = _resolve_mentions(search_phrase.strip(), id_to_name or {})
-            print(f"RAG search phrase: {search_phrase}")
-            embedding = await llm_client.get_embedding(search_phrase, config.OLLAMA_EMBEDDING_MODEL)
-            if embedding:
-                matches = db_manager.search_messages(server_id, embedding, limit=10, hours=48)
-                if matches:
-                    lines = ["## Search results", "The following are the top matching messages from the past 48 hours related to this conversation:"]
-                    for r in matches:
-                        content = _resolve_mentions(r['content'][:200], id_to_name or {}).replace("\n", " ")
-                        lines.append(f"- [{r['channel_name'] or 'unknown'}] {r['username']}: {content}")
-                    system_prompt["content"] += "\n\n" + "\n".join(lines)
+        resolved_content = _resolve_mentions(user_content, id_to_name or {})
+        embedding = await llm_client.get_embedding(resolved_content, config.OLLAMA_EMBEDDING_MODEL)
+        if embedding:
+            matches = db_manager.search_messages(server_id, embedding, limit=10, hours=48)
+            if matches:
+                lines = ["## Search results", "The following are the top matching messages from the past 48 hours related to this conversation:"]
+                for r in matches:
+                    content = _resolve_mentions(r['content'][:200], id_to_name or {}).replace("\n", " ")
+                    lines.append(f"- [{r['channel_name'] or 'unknown'}] {r['username']}: {content}")
+                system_prompt["content"] += "\n\n" + "\n".join(lines)
 
     recent_user_msgs = db_manager.get_recent_raw_messages_by_user(server_id, message.author.id, limit=5)
     if recent_user_msgs:
