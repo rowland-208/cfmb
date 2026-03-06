@@ -6,3 +6,5 @@ ollama
 requests
 pydantic
 python-dotenv
+sqlite-vec
+tqdm

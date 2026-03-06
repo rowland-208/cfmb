@@ -10,7 +10,7 @@ from cfmb.config import Config
 @pytest.fixture
 def mock_config():
     mock_config = MagicMock(spec=Config)
-    mock_config.CONTEXT_SIZE = 10
+    mock_config.NUM_CLOSEST_MESSAGES = 10
     mock_config.DISCORD_MAX_MESSAGE_LENGTH = 2000
     mock_config.ADMIN1_USER_ID = 123
     mock_config.ADMIN2_USER_ID = 456
@@ -280,7 +280,7 @@ async def test_process_llm_request(
                 ]
             )
             mock_db_manager.get_recent_messages.assert_called_with(
-                "12345", "99999", mock_config.CONTEXT_SIZE
+                "12345", "99999", mock_config.NUM_CLOSEST_MESSAGES
             )
             mock_db_manager.get_system_prompt.assert_called_once()
             mock_extract.assert_called_once_with("<@Maker bot> Hello")

@@ -33,7 +33,8 @@ Create `~/.config/systemd/user/cfmb.service`:
 ```ini
 [Service]
 WorkingDirectory=/home/<user>/repos/cfmb
-ExecStart=/bin/bash -c 'source /home/<user>/.cfmb && /home/<user>/repos/cfmb/.venv/bin/python -m cfmb.bot'
+EnvironmentFile=/home/<user>/.cfmb
+ExecStart=/home/<user>/repos/cfmb/.venv/bin/python -m cfmb.bot
 Restart=on-failure
 RestartSec=10
 
@@ -41,7 +42,35 @@ RestartSec=10
 WantedBy=default.target
 ```
 
-Replace `<user>` with your username. The `.cfmb` file should export all required environment variables (see `env/` for required vars).
+Replace `<user>` with your username.
+
+#### Configuration
+
+Create `~/.cfmb` in dotenv format with the required variables:
+
+```ini
+DISCORD_BOT_TOKEN=your-token-here
+OLLAMA_MODEL=gemma3:12b
+BOT_USER_ID=123456789
+DB_NAME=cfmb_db.sqlite
+NUM_CLOSEST_MESSAGES=5
+DISCORD_MAX_MESSAGE_LENGTH=2000
+ADMIN1_USER_ID=123456789
+ADMIN2_USER_ID=123456789
+NEWSLETTER_CHANNEL_ID=123456789
+```
+
+Optional guild-specific variables (all have generic defaults):
+
+```ini
+BOT_DISPLAY_NAME=Maker bot
+NEWSLETTER_TITLE=CFMG Daily Newsletter
+MEETUP_URL=https://www.meetup.com/your-group/
+SUMMARY_SYSTEM_PROMPT=Your custom channel summary prompt...
+CURATION_SYSTEM_PROMPT=Your custom newsletter curation prompt...
+OLLAMA_IMAGE_MODEL=your-image-model
+OLLAMA_EMBEDDING_MODEL=your-embedding-model
+```
 
 #### 2. Enable linger so the service starts at boot
 

@@ -80,3 +80,12 @@ class LLMClient:
         except Exception as e:
             print(f"LLM error: {e}")
             return None
+
+    async def get_embedding(self, text: str, embedding_model: str) -> list[float] | None:
+        """Returns a vector embedding for the given text using the specified Ollama model."""
+        try:
+            response = await self.async_client.embed(model=embedding_model, input=text)
+            return response["embeddings"][0]
+        except Exception as e:
+            print(f"Embedding error: {e}")
+            return None

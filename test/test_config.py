@@ -14,7 +14,7 @@ def test_config_valid_env_vars(mocker: MockerFixture):
             "OLLAMA_MODEL": "test_model",
             "BOT_USER_ID": "test_bot_user",
             "DB_NAME": "test_db",
-            "CONTEXT_SIZE": "10",
+            "NUM_CLOSEST_MESSAGES": "10",
             "DISCORD_MAX_MESSAGE_LENGTH": "200",
             "ADMIN1_USER_ID": "123",
             "ADMIN2_USER_ID": "456",
@@ -26,14 +26,14 @@ def test_config_valid_env_vars(mocker: MockerFixture):
     assert config.OLLAMA_MODEL == "test_model"
     assert config.BOT_USER_ID == "test_bot_user"
     assert config.DB_NAME == "test_db"
-    assert config.CONTEXT_SIZE == 10
+    assert config.NUM_CLOSEST_MESSAGES == 10
     assert config.DISCORD_MAX_MESSAGE_LENGTH == 200
     assert config.ADMIN1_USER_ID == 123
     assert config.ADMIN2_USER_ID == 456
 
 
 def test_config_invalid_int_value(mocker: MockerFixture):
-    mocker.patch.dict(os.environ, {"CONTEXT_SIZE": "invalid"})
+    mocker.patch.dict(os.environ, {"NUM_CLOSEST_MESSAGES": "invalid"})
 
     with pytest.raises(ValidationError):
         config = Config.readenv()
