@@ -734,8 +734,7 @@ async def _build_system_prompt(message, server_id, user_content, id_to_name=None
         f"\n- Channel name: #{message.channel.name}"
         f"\n- User name: {message.author.display_name}"
         f"\n- Current time: {now_eastern.strftime('%Y-%m-%dT%H:%M:%S')}"
-        f"\n- Latest message: {prev_age}"
-        f"\n- Latest user profile: {profile_age}"
+        f"\n- User last active: {prev_age}"
     )
 
     if profile_row:
