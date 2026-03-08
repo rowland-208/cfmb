@@ -1,8 +1,10 @@
 import asyncio
 import io
 import pathlib
+import random
 import re
 import subprocess
+import sys
 import math
 from datetime import date, datetime, time, timezone
 from zoneinfo import ZoneInfo
@@ -206,6 +208,11 @@ async def on_message(message):
 
     if message.content.startswith("/summary"):
         await handle_summary_command(message, server_id)
+        return
+
+    if message.content.startswith("/debug"):
+        message.content = message.content.replace("/debug", "", 1).strip()
+        await handle_bot_mention(message, server_id, chain_id, skip_moderation=True, save_thinking=True)
         return
 
     if message.content.startswith("/unhinged"):
@@ -617,21 +624,21 @@ async def handle_event_command(message, server_id, chain_id):
     await handle_bot_mention(message, server_id, chain_id)
 
 
-async def handle_bot_mention(message, server_id, chain_id, skip_moderation=True):
+async def handle_bot_mention(message, server_id, chain_id, skip_moderation=True, save_thinking=False):
     """Enqueues a bot mention for LLM processing."""
-    await llm_queue.put((message, server_id, chain_id, skip_moderation))
+    await llm_queue.put((message, server_id, chain_id, skip_moderation, save_thinking))
     print(f"Queue: added request (size: {llm_queue.qsize()})")
 
 
 async def llm_worker():
     """Processes LLM requests from the queue one at a time."""
     while True:
-        message, server_id, chain_id, skip_moderation = await llm_queue.get()
+        message, server_id, chain_id, skip_moderation, save_thinking = await llm_queue.get()
         print(f"Queue: processing request (size: {llm_queue.qsize()})")
         await asyncio.sleep(1)
         try:
             ACTIVE_FILE.touch()
-            await process_llm_request(message, server_id, chain_id, skip_moderation=skip_moderation)
+            await process_llm_request(message, server_id, chain_id, skip_moderation=skip_moderation, save_thinking=save_thinking)
         except Exception as e:
             print(f"Error processing LLM request: {e}")
         finally:
@@ -760,19 +767,139 @@ async def _build_system_prompt(message, server_id, user_content, id_to_name=None
 DISCORD_HARD_LIMIT = 2000
 
 
-def _format_thinking(thinking_text):
+def _format_thinking(thinking_text, truncate=True):
     """Formats thinking text for display in Discord as a quote block."""
     header = "*thinking...*\n"
-    # Each line gets "> " prefix (3 chars) plus "\n" — budget conservatively
-    max_text = DISCORD_HARD_LIMIT - len(header) - 50
-    truncated = thinking_text[-max_text:]
-    prefix = "…" if len(thinking_text) > max_text else ""
-    lines = (prefix + truncated).split("\n")
+    if truncate:
+        max_text = 500
+        text = thinking_text[-max_text:]
+        prefix = "…" if len(thinking_text) > max_text else ""
+        text = prefix + text
+    else:
+        text = thinking_text
+    lines = text.split("\n")
     quoted = "\n".join(f"> {line}" for line in lines)
     return (header + quoted)[:DISCORD_HARD_LIMIT]
 
 
-async def process_llm_request(message, server_id, chain_id, skip_moderation=True):
+THINKING_CHUNK_SIZE = 500
+
+THINKING_STATUS_MESSAGES = [
+    "Refining response...",
+    "Pondering reality...",
+    "Thonking hard...",
+    "Plotting...",
+    "Consulting the void...",
+    "Warming up neurons...",
+    "Rummaging through thoughts...",
+    "Brewing an answer...",
+    "Crunching the vibes...",
+    "Almost there, probably...",
+    "Asking the magic 8-ball...",
+    "Dusting off the brain cells...",
+    "Downloading more RAM...",
+    "Untangling spaghetti logic...",
+    "Poking the hamster wheel...",
+    "Reticulating splines...",
+    "Consulting ancient scrolls...",
+    "Adjusting the tinfoil hat...",
+    "Dividing by zero, hold on...",
+    "Shaking the magic conch...",
+    "Feeding the squirrels...",
+    "Negotiating with the cloud...",
+    "Spinning up the flux capacitor...",
+    "Checking under the couch cushions...",
+    "Summoning the brainstorm...",
+    "Defragmenting my thoughts...",
+    "Polishing the crystal ball...",
+    "Calibrating the nonsense filter...",
+    "Waking up the night shift...",
+    "Consulting a rubber duck...",
+    "Compiling witty remarks...",
+    "Flipping through the manual...",
+    "Charging the laser cutter...",
+    "Running it through the committee...",
+    "Herding cats, one moment...",
+    "Letting it marinate...",
+    "Cross-referencing the multiverse...",
+    "Rolling for intelligence...",
+    "Buffering, like it's 2005...",
+    "Asking the intern...",
+]
+
+
+async def _stream_save_thinking(message, context_messages):
+    """Streams LLM response, sending thinking text as sequential 500-char chunk messages."""
+    buffer = ""
+    done = asyncio.Event()
+    phase = {"current": "thinking"}  # tracks thinking vs content
+
+    async def flush_buffer():
+        """Send all complete chunks from the buffer."""
+        nonlocal buffer
+        while len(buffer) >= THINKING_CHUNK_SIZE:
+            chunk = buffer[:THINKING_CHUNK_SIZE]
+            buffer = buffer[THINKING_CHUNK_SIZE:]
+            if phase["current"] == "thinking":
+                display = _format_thinking(chunk, truncate=False)
+            else:
+                display = chunk[:DISCORD_HARD_LIMIT]
+            await message.channel.send(display)
+
+    async def consumer():
+        """Watches the buffer and sends chunks as they fill up."""
+        while not done.is_set():
+            await flush_buffer()
+            await asyncio.sleep(0.1)
+        # Final flush of any remaining text
+        await flush_buffer()
+        nonlocal buffer
+        if buffer.strip():
+            if phase["current"] == "thinking":
+                display = _format_thinking(buffer, truncate=False)
+            else:
+                display = buffer[:DISCORD_HARD_LIMIT]
+            await message.channel.send(display)
+            buffer = ""
+
+    consumer_task = asyncio.create_task(consumer())
+
+    def on_thinking(thinking_so_far):
+        nonlocal buffer
+        # The callback receives cumulative text; we only care about appending new chars
+        # but get_completion_streaming calls with full text, so we track via a closure
+        pass
+
+    # We need direct buffer access from the streaming loop, so use a simpler approach:
+    # pass callbacks that just append new chars to the buffer
+    last_thinking_len = 0
+    last_content_len = 0
+
+    async def on_thinking_cb(thinking_so_far):
+        nonlocal buffer, last_thinking_len
+        new_text = thinking_so_far[last_thinking_len:]
+        last_thinking_len = len(thinking_so_far)
+        buffer += new_text
+
+    async def on_content_cb(content_so_far):
+        nonlocal buffer, last_content_len
+        if phase["current"] == "thinking":
+            phase["current"] = "content"
+        new_text = content_so_far[last_content_len:]
+        last_content_len = len(content_so_far)
+        buffer += new_text
+
+    thinking_text, content_text = await llm_client.get_completion_streaming(
+        context_messages, on_thinking=on_thinking_cb, on_content=on_content_cb,
+    )
+
+    done.set()
+    await consumer_task
+    return thinking_text, content_text
+
+
+
+async def process_llm_request(message, server_id, chain_id, skip_moderation=True, save_thinking=False):
     """Processes a single LLM request."""
     async with message.channel.typing():
         print("Fetching context...")
@@ -817,50 +944,49 @@ async def process_llm_request(message, server_id, chain_id, skip_moderation=True
             context_messages.append({"role": "tool", "content": url_text})
 
         print("Running llm...")
-        thinking_msg = None
 
-        async def on_thinking(thinking_so_far):
-            nonlocal thinking_msg
-            try:
-                display = _format_thinking(thinking_so_far)
-                if thinking_msg is None:
-                    thinking_msg = await message.reply(display)
-                else:
-                    await thinking_msg.edit(content=display)
-            except Exception as e:
-                print(f"Error updating thinking message: {e}")
-
-        async def on_content(content_so_far):
-            nonlocal thinking_msg
-            try:
-                display = content_so_far[: config.DISCORD_MAX_MESSAGE_LENGTH]
-                if thinking_msg is None:
-                    thinking_msg = await message.reply(display)
-                else:
-                    await thinking_msg.edit(content=display)
-            except Exception as e:
-                print(f"Error updating content message: {e}")
-
-        thinking_text, bot_response_content = await llm_client.get_completion_streaming(
-            context_messages, on_thinking=on_thinking, on_content=on_content,
-        )
-
-    if bot_response_content:
-        print("Writing context")
-        final_content = bot_response_content[: config.DISCORD_MAX_MESSAGE_LENGTH]
-        if thinking_msg is not None:
-            await thinking_msg.edit(content=final_content)
-            reply = thinking_msg
-        else:
-            reply = await message.reply(final_content)
-        db_manager.write_message(server_id, chain_id, "assistant", bot_response_content, message_id=str(reply.id), channel_id=str(message.channel.id), channel_name=message.channel.name)
-    else:
-        if thinking_msg is not None:
-            await thinking_msg.edit(content="Sorry, I encountered an error generating a response.")
-        else:
-            await message.reply(
-                "Sorry, I encountered an error generating a response."
+        if save_thinking:
+            _, bot_response_content = await _stream_save_thinking(
+                message, context_messages,
             )
+            if bot_response_content:
+                reply = await message.reply(bot_response_content[: config.DISCORD_MAX_MESSAGE_LENGTH])
+            else:
+                await message.reply("Sorry, I encountered an error generating a response.")
+                return
+        else:
+            # Post a status message and cycle through statuses while waiting
+            start_idx = random.randrange(len(THINKING_STATUS_MESSAGES))
+            status_msg = await message.reply(THINKING_STATUS_MESSAGES[start_idx])
+            done = asyncio.Event()
+            status_idx = start_idx
+
+            async def cycle_status():
+                nonlocal status_idx
+                while not done.is_set():
+                    await asyncio.sleep(7)
+                    if done.is_set():
+                        break
+                    status_idx = (status_idx + 1) % len(THINKING_STATUS_MESSAGES)
+                    try:
+                        await status_msg.edit(content=THINKING_STATUS_MESSAGES[status_idx])
+                    except Exception as e:
+                        print(f"Error cycling status: {e}", file=sys.stderr, flush=True)
+
+            status_task = asyncio.create_task(cycle_status())
+            bot_response_content = await llm_client.get_completion(context_messages)
+            done.set()
+            await status_task
+
+            if bot_response_content:
+                await status_msg.edit(content=bot_response_content[: config.DISCORD_MAX_MESSAGE_LENGTH])
+                reply = status_msg
+            else:
+                await status_msg.edit(content="Sorry, I encountered an error generating a response.")
+                return
+
+    print("Writing context")
+    db_manager.write_message(server_id, chain_id, "assistant", bot_response_content, message_id=str(reply.id), channel_id=str(message.channel.id), channel_name=message.channel.name)
 
 
 if __name__ == "__main__":

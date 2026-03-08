@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import time
 
 import ollama
 import requests
@@ -108,11 +109,10 @@ class LLMClient:
         content_text = ""
         thinking_tokens = 0
         content_tokens = 0
-        last_thinking_update = 0
-        last_content_update = 0
-        UPDATE_INTERVAL = 500
 
         try:
+            t_start = time.monotonic()
+            t_first_token = None
             stream = await self.async_client.chat(
                 model=self.model_name,
                 messages=messages,
@@ -128,25 +128,24 @@ class LLMClient:
                 },
             )
             async for chunk in stream:
+                if t_first_token is None:
+                    t_first_token = time.monotonic()
+                    print(f"Streaming: first token in {t_first_token - t_start:.2f}s")
                 msg = chunk.get("message", {})
                 if msg.get("thinking"):
                     thinking_text += msg["thinking"]
                     thinking_tokens += 1
-                    if on_thinking and thinking_tokens - last_thinking_update >= UPDATE_INTERVAL:
-                        last_thinking_update = thinking_tokens
+                    if on_thinking:
                         await on_thinking(thinking_text)
                 if msg.get("content"):
                     content_text += msg["content"]
                     content_tokens += 1
-                    if on_content and content_tokens - last_content_update >= UPDATE_INTERVAL:
-                        last_content_update = content_tokens
+                    if on_content:
                         await on_content(content_text)
 
-            # Final callbacks
-            if on_thinking and thinking_text:
-                await on_thinking(thinking_text)
-            if on_content and content_text:
-                await on_content(content_text)
+            t_end = time.monotonic()
+            total_tokens = thinking_tokens + content_tokens
+            print(f"Streaming: last token in {t_end - t_start:.2f}s ({total_tokens} tokens, {total_tokens / (t_end - t_start):.1f} tok/s)")
 
             return thinking_text, content_text
         except Exception as e:
