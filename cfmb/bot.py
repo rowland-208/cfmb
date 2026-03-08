@@ -746,21 +746,13 @@ async def _build_system_prompt(message, server_id, user_content, id_to_name=None
         resolved_content = _resolve_mentions(user_content, id_to_name or {})
         embedding = await llm_client.get_embedding(resolved_content, config.OLLAMA_EMBEDDING_MODEL)
         if embedding:
-            matches = db_manager.search_messages(server_id, embedding, limit=10, hours=48)
+            matches = db_manager.search_messages(server_id, embedding, limit=5, hours=48)
             if matches:
                 lines = ["## Search results", "The following are the top matching messages from the past 48 hours related to this conversation:"]
                 for r in matches:
                     content = _resolve_mentions(r['content'][:200], id_to_name or {}).replace("\n", " ")
                     lines.append(f"- [{r['channel_name'] or 'unknown'}] {r['username']}: {content}")
                 system_prompt["content"] += "\n\n" + "\n".join(lines)
-
-    recent_user_msgs = db_manager.get_recent_raw_messages_by_user(server_id, message.author.id, limit=5)
-    if recent_user_msgs:
-        lines = ["## Recent messages from this user"]
-        for m in recent_user_msgs:
-            content = _resolve_mentions(m['content'], id_to_name or {}).replace("\n", " ")
-            lines.append(f"- [{m['channel_name'] or 'unknown'}] {content}")
-        system_prompt["content"] += "\n\n" + "\n".join(lines)
 
     return system_prompt
 
