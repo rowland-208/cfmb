@@ -757,6 +757,21 @@ async def _build_system_prompt(message, server_id, user_content, id_to_name=None
     return system_prompt
 
 
+DISCORD_HARD_LIMIT = 2000
+
+
+def _format_thinking(thinking_text):
+    """Formats thinking text for display in Discord as a quote block."""
+    header = "*thinking...*\n"
+    # Each line gets "> " prefix (3 chars) plus "\n" — budget conservatively
+    max_text = DISCORD_HARD_LIMIT - len(header) - 50
+    truncated = thinking_text[-max_text:]
+    prefix = "…" if len(thinking_text) > max_text else ""
+    lines = (prefix + truncated).split("\n")
+    quoted = "\n".join(f"> {line}" for line in lines)
+    return (header + quoted)[:DISCORD_HARD_LIMIT]
+
+
 async def process_llm_request(message, server_id, chain_id, skip_moderation=True):
     """Processes a single LLM request."""
     async with message.channel.typing():
@@ -802,16 +817,50 @@ async def process_llm_request(message, server_id, chain_id, skip_moderation=True
             context_messages.append({"role": "tool", "content": url_text})
 
         print("Running llm...")
-        bot_response_content = await llm_client.get_completion(context_messages)
+        thinking_msg = None
+
+        async def on_thinking(thinking_so_far):
+            nonlocal thinking_msg
+            try:
+                display = _format_thinking(thinking_so_far)
+                if thinking_msg is None:
+                    thinking_msg = await message.reply(display)
+                else:
+                    await thinking_msg.edit(content=display)
+            except Exception as e:
+                print(f"Error updating thinking message: {e}")
+
+        async def on_content(content_so_far):
+            nonlocal thinking_msg
+            try:
+                display = content_so_far[: config.DISCORD_MAX_MESSAGE_LENGTH]
+                if thinking_msg is None:
+                    thinking_msg = await message.reply(display)
+                else:
+                    await thinking_msg.edit(content=display)
+            except Exception as e:
+                print(f"Error updating content message: {e}")
+
+        thinking_text, bot_response_content = await llm_client.get_completion_streaming(
+            context_messages, on_thinking=on_thinking, on_content=on_content,
+        )
 
     if bot_response_content:
         print("Writing context")
-        reply = await message.reply(bot_response_content[: config.DISCORD_MAX_MESSAGE_LENGTH])
+        final_content = bot_response_content[: config.DISCORD_MAX_MESSAGE_LENGTH]
+        if thinking_msg is not None:
+            await thinking_msg.edit(content=final_content)
+            reply = thinking_msg
+        else:
+            reply = await message.reply(final_content)
         db_manager.write_message(server_id, chain_id, "assistant", bot_response_content, message_id=str(reply.id), channel_id=str(message.channel.id), channel_name=message.channel.name)
     else:
-        await message.reply(
-            "Sorry, I encountered an error generating a response."
-        )
+        if thinking_msg is not None:
+            await thinking_msg.edit(content="Sorry, I encountered an error generating a response.")
+        else:
+            await message.reply(
+                "Sorry, I encountered an error generating a response."
+            )
 
 
 if __name__ == "__main__":

@@ -97,6 +97,62 @@ class LLMClient:
             print(f"LLM error: {e}")
             return None
 
+    async def get_completion_streaming(self, messages, on_thinking=None, on_content=None):
+        """Streams a chat completion with thinking enabled.
+
+        Calls on_thinking(thinking_so_far) periodically during the thinking phase,
+        and on_content(content_so_far) periodically during the content phase.
+        Returns (thinking_text, content_text) when done.
+        """
+        thinking_text = ""
+        content_text = ""
+        thinking_tokens = 0
+        content_tokens = 0
+        last_thinking_update = 0
+        last_content_update = 0
+        UPDATE_INTERVAL = 500
+
+        try:
+            stream = await self.async_client.chat(
+                model=self.model_name,
+                messages=messages,
+                stream=True,
+                think=True,
+                options={
+                    "temperature": 1.0,
+                    "top_p": 0.95,
+                    "top_k": 20,
+                    "min_p": 0.0,
+                    "presence_penalty": 1.5,
+                    "repeat_penalty": 1.0,
+                },
+            )
+            async for chunk in stream:
+                msg = chunk.get("message", {})
+                if msg.get("thinking"):
+                    thinking_text += msg["thinking"]
+                    thinking_tokens += 1
+                    if on_thinking and thinking_tokens - last_thinking_update >= UPDATE_INTERVAL:
+                        last_thinking_update = thinking_tokens
+                        await on_thinking(thinking_text)
+                if msg.get("content"):
+                    content_text += msg["content"]
+                    content_tokens += 1
+                    if on_content and content_tokens - last_content_update >= UPDATE_INTERVAL:
+                        last_content_update = content_tokens
+                        await on_content(content_text)
+
+            # Final callbacks
+            if on_thinking and thinking_text:
+                await on_thinking(thinking_text)
+            if on_content and content_text:
+                await on_content(content_text)
+
+            return thinking_text, content_text
+        except Exception as e:
+            print(f"LLM streaming error: {e}")
+            return None, None
+
     async def get_embedding(self, text: str, embedding_model: str) -> list[float] | None:
         """Returns a vector embedding for the given text using the specified Ollama model."""
         try:
