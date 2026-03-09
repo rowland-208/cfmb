@@ -851,89 +851,93 @@ async def _stream_llm(message, context_messages, tools=None, tool_handler=None, 
 
 async def process_llm_request(message, server_id, chain_id, skip_moderation=True, save_thinking=False):
     """Processes a single LLM request."""
-    async with message.channel.typing():
-        print("Fetching context...")
-        id_to_name = db_manager.get_user_id_name_map(server_id)
-        id_to_name[str(config.BOT_USER_ID)] = config.BOT_DISPLAY_NAME
-        user_content = _resolve_mentions(message.content, id_to_name)
+    print("Fetching context...")
+    id_to_name = db_manager.get_user_id_name_map(server_id)
+    id_to_name[str(config.BOT_USER_ID)] = config.BOT_DISPLAY_NAME
+    user_content = _resolve_mentions(message.content, id_to_name)
 
-        if not skip_moderation:
-            print("Moderating message...")
-            mod_response = await llm_client.moderate(user_content)
-            if mod_response and re.search(r"\bblock\b", mod_response, re.IGNORECASE):
-                print(f"Moderation: blocked message from {message.author.display_name}")
-                await message.add_reaction("⚠️")
-                return
-
-        db_manager.write_message(server_id, chain_id, "user", user_content, username=message.author.display_name, message_id=str(message.id), channel_id=str(message.channel.id), channel_name=message.channel.name, user_id=str(message.author.id))
-
-        image_bytes_list = []
-        for attachment in message.attachments:
-            if attachment.content_type and attachment.content_type.startswith("image/"):
-                data = await attachment.read()
-                if attachment.content_type == "image/gif":
-                    frame = Image.open(io.BytesIO(data))
-                    frame.seek(0)
-                    buf = io.BytesIO()
-                    frame.convert("RGB").save(buf, format="PNG")
-                    data = buf.getvalue()
-                image_bytes_list.append(data)
-
-        context_messages = db_manager.get_recent_messages(server_id, chain_id, config.NUM_CLOSEST_MESSAGES)
-
-        system_prompt = await _build_system_prompt(message, server_id, user_content, id_to_name)
-
-        context_messages.insert(0, system_prompt)
-
-        if image_bytes_list:
-            context_messages[-1]["images"] = image_bytes_list
-
-        if url := extract_first_url(user_content):
-            print("Pulling web text...")
-            url_text = get_webpage_text(url)
-            context_messages.append({"role": "tool", "content": url_text})
-
-        print("Running llm...")
-
-        tools = [SEARCH_TOOL] if config.OLLAMA_EMBEDDING_MODEL else None
-
-        async def tool_handler(name, args):
-            if name == "search":
-                return await _handle_search_tool(args.get("query", ""), server_id, id_to_name)
-            return f"Unknown tool: {name}"
-
-        # Post a status message and cycle through statuses while streaming
-        start_idx = random.randrange(len(THINKING_STATUS_MESSAGES))
-        status_msg = await message.reply(THINKING_STATUS_MESSAGES[start_idx])
-        done = asyncio.Event()
-        status_idx = start_idx
-
-        async def cycle_status():
-            nonlocal status_idx
-            while not done.is_set():
-                await asyncio.sleep(7)
-                if done.is_set():
-                    break
-                status_idx = (status_idx + 1) % len(THINKING_STATUS_MESSAGES)
-                try:
-                    await status_msg.edit(content=THINKING_STATUS_MESSAGES[status_idx])
-                except Exception as e:
-                    print(f"Error cycling status: {e}", file=sys.stderr, flush=True)
-
-        status_task = asyncio.create_task(cycle_status())
-        _, bot_response_content = await _stream_llm(
-            message, context_messages, tools=tools, tool_handler=tool_handler,
-            debug=save_thinking,
-        )
-        done.set()
-        await status_task
-
-        if bot_response_content:
-            await status_msg.edit(content=bot_response_content[: config.DISCORD_MAX_MESSAGE_LENGTH])
-            reply = status_msg
-        else:
-            await status_msg.edit(content="Sorry, I encountered an error generating a response.")
+    if not skip_moderation:
+        print("Moderating message...")
+        mod_response = await llm_client.moderate(user_content)
+        if mod_response and re.search(r"\bblock\b", mod_response, re.IGNORECASE):
+            print(f"Moderation: blocked message from {message.author.display_name}")
+            await message.add_reaction("⚠️")
             return
+
+    db_manager.write_message(server_id, chain_id, "user", user_content, username=message.author.display_name, message_id=str(message.id), channel_id=str(message.channel.id), channel_name=message.channel.name, user_id=str(message.author.id))
+
+    image_bytes_list = []
+    for attachment in message.attachments:
+        if attachment.content_type and attachment.content_type.startswith("image/"):
+            data = await attachment.read()
+            if attachment.content_type == "image/gif":
+                frame = Image.open(io.BytesIO(data))
+                frame.seek(0)
+                buf = io.BytesIO()
+                frame.convert("RGB").save(buf, format="PNG")
+                data = buf.getvalue()
+            image_bytes_list.append(data)
+
+    context_messages = db_manager.get_recent_messages(server_id, chain_id, config.NUM_CLOSEST_MESSAGES)
+
+    system_prompt = await _build_system_prompt(message, server_id, user_content, id_to_name)
+
+    context_messages.insert(0, system_prompt)
+
+    if image_bytes_list:
+        context_messages[-1]["images"] = image_bytes_list
+
+    if url := extract_first_url(user_content):
+        print("Pulling web text...")
+        url_text = get_webpage_text(url)
+        context_messages.append({"role": "tool", "content": url_text})
+
+    print("Running llm...")
+
+    tools = [SEARCH_TOOL] if config.OLLAMA_EMBEDDING_MODEL else None
+
+    async def tool_handler(name, args):
+        if name == "search":
+            return await _handle_search_tool(args.get("query", ""), server_id, id_to_name)
+        return f"Unknown tool: {name}"
+
+    # Post a status message and cycle through statuses while streaming
+    start_idx = random.randrange(len(THINKING_STATUS_MESSAGES))
+    status_msg = await message.reply(THINKING_STATUS_MESSAGES[start_idx])
+    done = asyncio.Event()
+    status_idx = start_idx
+
+    async def cycle_status():
+        nonlocal status_idx
+        while not done.is_set():
+            await asyncio.sleep(7)
+            if done.is_set():
+                break
+            status_idx = (status_idx + 1) % len(THINKING_STATUS_MESSAGES)
+            try:
+                await status_msg.edit(content=THINKING_STATUS_MESSAGES[status_idx])
+            except Exception as e:
+                print(f"Error cycling status: {e}", file=sys.stderr, flush=True)
+
+    status_task = asyncio.create_task(cycle_status())
+    _, bot_response_content = await _stream_llm(
+        message, context_messages, tools=tools, tool_handler=tool_handler,
+        debug=save_thinking,
+    )
+    done.set()
+    await status_task
+
+    # Delete the status message and send the final response as a new reply
+    try:
+        await status_msg.delete()
+    except Exception as e:
+        print(f"Error deleting status message: {e}", file=sys.stderr, flush=True)
+
+    if bot_response_content:
+        reply = await message.reply(bot_response_content[: config.DISCORD_MAX_MESSAGE_LENGTH])
+    else:
+        await message.reply("Sorry, I encountered an error generating a response.")
+        return
 
     print("Writing context")
     db_manager.write_message(server_id, chain_id, "assistant", bot_response_content, message_id=str(reply.id), channel_id=str(message.channel.id), channel_name=message.channel.name)
