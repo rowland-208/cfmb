@@ -458,12 +458,19 @@ class DatabaseManager:
         except sqlite3.Error as e:
             print(f"RAG chunk update error: {e}")
 
-    def search_rag_chunks(self, server_id: str, embedding: list[float], limit: int = 5, hours: int | None = None) -> list[dict]:
+    def search_rag_chunks(self, server_id: str, embedding: list[float], limit: int = 5, hours: int | None = None, exclude_channels: set[str] | None = None) -> list[dict]:
         """Returns the closest RAG chunks to the given embedding vector, scoped to a server.
-        Optionally restrict to chunks from the past `hours` hours."""
+        Optionally restrict to chunks from the past `hours` hours and exclude specific channel IDs."""
         blob = struct.pack(f"{len(embedding)}f", *embedding)
         time_filter = "AND timestamp >= datetime('now', ?)" if hours is not None else ""
-        params = [blob, server_id] + ([f"-{hours} hours"] if hours is not None else []) + [limit]
+        params = [blob, server_id] + ([f"-{hours} hours"] if hours is not None else [])
+        if exclude_channels:
+            placeholders = ",".join("?" * len(exclude_channels))
+            channel_filter = f"AND channel_id NOT IN ({placeholders})"
+            params.extend(exclude_channels)
+        else:
+            channel_filter = ""
+        params.append(limit)
         try:
             with self._get_connection() as conn:
                 rows = conn.execute(
@@ -473,6 +480,7 @@ class DatabaseManager:
                     FROM rag_chunks
                     WHERE server_id = ?
                     {time_filter}
+                    {channel_filter}
                     ORDER BY distance ASC
                     LIMIT ?
                     """,

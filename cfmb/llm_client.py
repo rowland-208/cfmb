@@ -78,10 +78,15 @@ class LLMClient:
             print(f"Moderation error: {e}")
             return None
 
-    async def get_completion(self, messages):
-        """Sends messages to the LLM and returns the response."""
+    async def get_completion(self, messages, tools=None, tool_handler=None):
+        """Sends messages to the LLM and returns the response.
+
+        If tools and tool_handler are provided, loops on tool calls until the
+        model produces a final text response.  tool_handler is an async callable
+        (name, args) -> str.
+        """
         try:
-            response = await self.async_client.chat(
+            chat_kwargs = dict(
                 model=self.model_name,
                 messages=messages,
                 options={
@@ -93,16 +98,39 @@ class LLMClient:
                     "repeat_penalty": 1.0,
                 },
             )
-            return response["message"]["content"]
+            if tools:
+                chat_kwargs["tools"] = tools
+
+            while True:
+                response = await self.async_client.chat(**chat_kwargs)
+                msg = response["message"]
+
+                if not tools or not msg.get("tool_calls"):
+                    return msg["content"]
+
+                messages.append(msg)
+                for tc in msg["tool_calls"]:
+                    name = tc["function"]["name"]
+                    args = tc["function"]["arguments"]
+                    print(f"Tool call: {name}({args})")
+                    result = await tool_handler(name, args)
+                    messages.append({
+                        "role": "tool",
+                        "content": str(result),
+                    })
+
         except Exception as e:
             print(f"LLM error: {e}")
             return None
 
-    async def get_completion_streaming(self, messages, on_thinking=None, on_content=None):
+    async def get_completion_streaming(self, messages, on_thinking=None, on_content=None,
+                                       tools=None, tool_handler=None, on_tool_call=None):
         """Streams a chat completion with thinking enabled.
 
         Calls on_thinking(thinking_so_far) periodically during the thinking phase,
         and on_content(content_so_far) periodically during the content phase.
+        If tools/tool_handler are provided, loops on tool calls until final response.
+        on_tool_call(name, args, result) is called after each tool execution for debug output.
         Returns (thinking_text, content_text) when done.
         """
         thinking_text = ""
@@ -113,7 +141,8 @@ class LLMClient:
         try:
             t_start = time.monotonic()
             t_first_token = None
-            stream = await self.async_client.chat(
+
+            chat_kwargs = dict(
                 model=self.model_name,
                 messages=messages,
                 stream=True,
@@ -127,21 +156,53 @@ class LLMClient:
                     "repeat_penalty": 1.0,
                 },
             )
-            async for chunk in stream:
-                if t_first_token is None:
-                    t_first_token = time.monotonic()
-                    print(f"Streaming: first token in {t_first_token - t_start:.2f}s")
-                msg = chunk.get("message", {})
-                if msg.get("thinking"):
-                    thinking_text += msg["thinking"]
-                    thinking_tokens += 1
-                    if on_thinking:
-                        await on_thinking(thinking_text)
-                if msg.get("content"):
-                    content_text += msg["content"]
-                    content_tokens += 1
-                    if on_content:
-                        await on_content(content_text)
+            if tools:
+                chat_kwargs["tools"] = tools
+
+            while True:
+                tool_calls = []
+                stream = await self.async_client.chat(**chat_kwargs)
+                async for chunk in stream:
+                    if t_first_token is None:
+                        t_first_token = time.monotonic()
+                        print(f"Streaming: first token in {t_first_token - t_start:.2f}s")
+                    msg = chunk.get("message", {})
+                    if msg.get("thinking"):
+                        thinking_text += msg["thinking"]
+                        thinking_tokens += 1
+                        if on_thinking:
+                            await on_thinking(thinking_text)
+                    if msg.get("content"):
+                        content_text += msg["content"]
+                        content_tokens += 1
+                        if on_content:
+                            await on_content(content_text)
+                    if msg.get("tool_calls"):
+                        tool_calls.extend(msg["tool_calls"])
+
+                if not tools or not tool_calls:
+                    break
+
+                # Append assistant message with tool calls, execute tools, and loop
+                messages.append({
+                    "role": "assistant",
+                    "content": content_text,
+                    "tool_calls": tool_calls,
+                })
+                for tc in tool_calls:
+                    name = tc["function"]["name"]
+                    args = tc["function"]["arguments"]
+                    print(f"Tool call: {name}({args})")
+                    result = await tool_handler(name, args)
+                    if on_tool_call:
+                        await on_tool_call(name, args, result)
+                    messages.append({
+                        "role": "tool",
+                        "content": str(result),
+                    })
+                # Reset for next round
+                content_text = ""
+                content_tokens = 0
 
             t_end = time.monotonic()
             total_tokens = thinking_tokens + content_tokens
