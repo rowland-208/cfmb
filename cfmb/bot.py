@@ -23,6 +23,36 @@ from cfmb.llm_client import LLMClient
 from cfmb.webfetch import get_webpage_text, extract_first_url
 
 
+BATCH_THRESHOLD = 512
+BATCH_MAX_CONTENT = 2048
+
+
+class RagBatcher:
+    """Batches messages per channel into rag_chunks rows, updating the latest until full."""
+
+    def __init__(self, db_manager_ref, llm_client_ref):
+        self.db = db_manager_ref
+        self.llm = llm_client_ref
+
+    async def add_message(self, server_id: str, channel_id: str, channel_name: str, message_id: str, username: str, text: str):
+        """Append a formatted message to the latest chunk for this channel, or create a new one."""
+        formatted = f"{username}: {text}"
+        latest = self.db.get_latest_rag_chunk(channel_id)
+
+        if latest and len(latest["content"]) <= BATCH_THRESHOLD:
+            content = (latest["content"] + "\n" + formatted)[:BATCH_MAX_CONTENT]
+            embedding = await self.llm.get_embedding(content, config.OLLAMA_EMBEDDING_MODEL)
+            if embedding:
+                self.db.update_rag_chunk(latest["id"], content, embedding)
+                print(f"RAG batcher: updated chunk {latest['id']} for channel {channel_id} ({len(content)} chars)")
+        else:
+            content = formatted[:BATCH_MAX_CONTENT]
+            embedding = await self.llm.get_embedding(content, config.OLLAMA_EMBEDDING_MODEL)
+            if embedding:
+                self.db.write_rag_chunk(server_id, message_id, channel_id, channel_name, content, embedding)
+                print(f"RAG batcher: new chunk for channel {channel_id} ({len(content)} chars)")
+
+
 intents = discord.Intents.default()
 intents.message_content = True
 
@@ -33,6 +63,7 @@ llm_queue = asyncio.Queue()
 llm_worker_task = None
 emoji_queue = asyncio.Queue()
 emoji_worker_task = None
+rag_batcher = RagBatcher(db_manager, llm_client)
 
 # Matches common Unicode emoji ranges
 EMOJI_PATTERN = re.compile(
@@ -146,6 +177,14 @@ async def on_message(message):
         id_to_name = db_manager.get_user_id_name_map(server_id)
         id_to_name[str(config.BOT_USER_ID)] = config.BOT_DISPLAY_NAME
         asyncio.ensure_future(_store_embedding(str(message.id), _resolve_mentions(message.content, id_to_name)))
+        asyncio.ensure_future(rag_batcher.add_message(
+            server_id,
+            str(message.channel.id),
+            getattr(message.channel, "name", None) or "unknown",
+            str(message.id),
+            message.author.display_name,
+            _resolve_mentions(message.content, id_to_name),
+        ))
 
     chain_id = resolve_chain_id(message)
 
@@ -404,7 +443,7 @@ async def handle_profile_command(message, server_id):
 
 
 async def handle_search_command(message, server_id):
-    """Handles the /search command — finds the 3 most semantically similar messages."""
+    """Handles the /search command — finds the 5 most semantically similar RAG chunks."""
     if not config.OLLAMA_EMBEDDING_MODEL:
         await message.channel.send("Search is not configured (no `OLLAMA_EMBEDDING_MODEL` set).")
         return
@@ -421,18 +460,18 @@ async def handle_search_command(message, server_id):
         await message.channel.send("Failed to generate embedding for your query.")
         return
 
-    results = db_manager.search_messages(server_id, embedding, limit=3)
+    results = db_manager.search_rag_chunks(server_id, embedding, limit=3)
     if not results:
         await message.channel.send("No results found.")
         return
 
-    lines = [f"**Results for** `{query[:50]}`"]
+    await message.channel.send(f"**Search results for** `{query[:50]}`")
     for r in results:
-        snippet = r["content"][:20].replace("\n", " ")
+        score = f"{1 - r['distance']:.0%}"
         url = f"https://discord.com/channels/{server_id}/{r['channel_id']}/{r['message_id']}"
-        lines.append(f"**{r['username']}** · [{snippet}…]({url})")
-
-    await message.channel.send("\n".join(lines))
+        header = f"Chunk `{r['id']}` · #{r['channel_name'] or 'unknown'} · {score} match · [jump]({url})"
+        msg = f"{header}\n>>> {r['content']}"
+        await message.channel.send(msg[:DISCORD_HARD_LIMIT])
 
 
 async def handle_summary_command(message, server_id):
@@ -753,13 +792,13 @@ async def _build_system_prompt(message, server_id, user_content, id_to_name=None
         resolved_content = _resolve_mentions(user_content, id_to_name or {})
         embedding = await llm_client.get_embedding(resolved_content, config.OLLAMA_EMBEDDING_MODEL)
         if embedding:
-            matches = db_manager.search_messages(server_id, embedding, limit=5, hours=48)
-            if matches:
-                lines = ["## Search results", "The following are the top matching messages from the past 48 hours related to this conversation:"]
-                for r in matches:
-                    content = _resolve_mentions(r['content'][:200], id_to_name or {}).replace("\n", " ")
-                    lines.append(f"- [{r['channel_name'] or 'unknown'}] {r['username']}: {content}")
-                system_prompt["content"] += "\n\n" + "\n".join(lines)
+            chunks = db_manager.search_rag_chunks(server_id, embedding, limit=3, hours=168)
+            if chunks:
+                lines = ["## Search results", "Top three conversations matching user input:"]
+                for r in chunks:
+                    content = _resolve_mentions(r['content'], id_to_name or {})
+                    lines.append(f"[#{r['channel_name'] or 'unknown'}]\n{content}")
+                system_prompt["content"] += "\n\n" + "\n\n".join(lines)
 
     return system_prompt
 

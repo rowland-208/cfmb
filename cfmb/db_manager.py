@@ -122,6 +122,20 @@ class DatabaseManager:
                     )
                     """
                 )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS rag_chunks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        server_id TEXT,
+                        message_id TEXT,
+                        channel_id TEXT,
+                        channel_name TEXT,
+                        content TEXT,
+                        embedding BLOB NOT NULL,
+                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
         except sqlite3.Error as e:
             print(f"Database initialization error: {e}")
 
@@ -415,6 +429,43 @@ class DatabaseManager:
         except sqlite3.Error as e:
             print(f"Database write error: {e}")
 
+    def write_rag_chunk(self, server_id: str, message_id: str, channel_id: str, channel_name: str, content: str, embedding: list[float]):
+        """Stores a batched RAG chunk with its embedding."""
+        blob = struct.pack(f"{len(embedding)}f", *embedding)
+        try:
+            with self._get_connection() as conn:
+                conn.execute(
+                    "INSERT INTO rag_chunks (server_id, message_id, channel_id, channel_name, content, embedding) VALUES (?, ?, ?, ?, ?, ?)",
+                    (server_id, message_id, channel_id, channel_name, content, blob),
+                )
+        except sqlite3.Error as e:
+            print(f"RAG chunk write error: {e}")
+
+    def get_latest_rag_chunk(self, channel_id: str) -> dict | None:
+        """Returns the most recent rag_chunk for a channel, or None."""
+        try:
+            with self._get_connection() as conn:
+                row = conn.execute(
+                    "SELECT id, message_id, channel_id, content FROM rag_chunks WHERE channel_id = ? ORDER BY id DESC LIMIT 1",
+                    (channel_id,),
+                ).fetchone()
+                return dict(row) if row else None
+        except sqlite3.Error as e:
+            print(f"RAG chunk read error: {e}")
+            return None
+
+    def update_rag_chunk(self, chunk_id: int, content: str, embedding: list[float]):
+        """Updates content and embedding for an existing rag_chunk row."""
+        blob = struct.pack(f"{len(embedding)}f", *embedding)
+        try:
+            with self._get_connection() as conn:
+                conn.execute(
+                    "UPDATE rag_chunks SET content = ?, embedding = ? WHERE id = ?",
+                    (content, blob, chunk_id),
+                )
+        except sqlite3.Error as e:
+            print(f"RAG chunk update error: {e}")
+
     def write_message_embedding(self, message_id: str, embedding: list[float]):
         """Stores a float32 vector embedding for a message (keyed by message_id)."""
         blob = struct.pack(f"{len(embedding)}f", *embedding)
@@ -460,6 +511,35 @@ class DatabaseManager:
             print(f"Embedding search error: {e}")
             return []
 
+    def search_rag_chunks(self, server_id: str, embedding: list[float], limit: int = 5, hours: int | None = None) -> list[dict]:
+        """Returns the closest RAG chunks to the given embedding vector, scoped to a server.
+        Optionally restrict to chunks from the past `hours` hours."""
+        blob = struct.pack(f"{len(embedding)}f", *embedding)
+        time_filter = "AND timestamp >= datetime('now', ?)" if hours is not None else ""
+        params = [blob, server_id] + ([f"-{hours} hours"] if hours is not None else []) + [limit]
+        try:
+            with self._get_connection() as conn:
+                rows = conn.execute(
+                    f"""
+                    SELECT id, content, channel_id, channel_name, message_id,
+                           vec_distance_cosine(embedding, ?) AS distance
+                    FROM rag_chunks
+                    WHERE server_id = ?
+                    {time_filter}
+                    ORDER BY distance ASC
+                    LIMIT ?
+                    """,
+                    params,
+                ).fetchall()
+            return [
+                {"id": chunk_id, "content": content, "channel_id": channel_id,
+                 "channel_name": channel_name, "message_id": message_id, "distance": distance}
+                for chunk_id, content, channel_id, channel_name, message_id, distance in rows
+            ]
+        except sqlite3.Error as e:
+            print(f"RAG chunk search error: {e}")
+            return []
+
     def add_member_points(self, member_id, points):
         """Adds points to a member in the database."""
         try:
@@ -498,6 +578,7 @@ class DatabaseManager:
         conn = None
         try:
             conn = sqlite3.connect(self.db_name)
+            conn.row_factory = sqlite3.Row
             conn.enable_load_extension(True)
             sqlite_vec.load(conn)
             conn.enable_load_extension(False)
