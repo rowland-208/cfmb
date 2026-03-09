@@ -176,7 +176,6 @@ async def on_message(message):
     if config.OLLAMA_EMBEDDING_MODEL and message.content:
         id_to_name = db_manager.get_user_id_name_map(server_id)
         id_to_name[str(config.BOT_USER_ID)] = config.BOT_DISPLAY_NAME
-        asyncio.ensure_future(_store_embedding(str(message.id), _resolve_mentions(message.content, id_to_name)))
         asyncio.ensure_future(rag_batcher.add_message(
             server_id,
             str(message.channel.id),
@@ -604,7 +603,7 @@ async def _annotate_with_sources(text: str, server_id: str) -> str:
         if len(segment.split()) >= 5:
             embedding = await llm_client.get_embedding(segment.strip(), config.OLLAMA_EMBEDDING_MODEL)
             if embedding:
-                matches = db_manager.search_messages(server_id, embedding, limit=1, hours=24)
+                matches = db_manager.search_rag_chunks(server_id, embedding, limit=1, hours=24)
                 if matches and matches[0]['distance'] < 0.408 and matches[0].get('channel_id'):
                     r = matches[0]
                     url = f"https://discord.com/channels/{server_id}/{r['channel_id']}/{r['message_id']}"
@@ -726,13 +725,6 @@ async def process_emoji_reaction(message):
             print(f"Emoji reaction: reacted with {emoji}")
         except Exception as e:
             print(f"Emoji reaction: failed to add reaction: {e}")
-
-
-async def _store_embedding(message_id: str, content: str):
-    """Fetches an embedding for content and persists it to the database."""
-    embedding = await llm_client.get_embedding(content, config.OLLAMA_EMBEDDING_MODEL)
-    if embedding:
-        db_manager.write_message_embedding(message_id, embedding)
 
 
 def resolve_chain_id(message):

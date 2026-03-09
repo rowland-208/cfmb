@@ -104,14 +104,6 @@ class DatabaseManager:
                     pass  # column already exists
                 cursor.execute(
                     """
-                    CREATE TABLE IF NOT EXISTS message_embeddings (
-                        message_id TEXT PRIMARY KEY,
-                        embedding BLOB NOT NULL
-                    )
-                    """
-                )
-                cursor.execute(
-                    """
                     CREATE TABLE IF NOT EXISTS user_profiles (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         server_id TEXT,
@@ -465,51 +457,6 @@ class DatabaseManager:
                 )
         except sqlite3.Error as e:
             print(f"RAG chunk update error: {e}")
-
-    def write_message_embedding(self, message_id: str, embedding: list[float]):
-        """Stores a float32 vector embedding for a message (keyed by message_id)."""
-        blob = struct.pack(f"{len(embedding)}f", *embedding)
-        try:
-            with self._get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "INSERT OR REPLACE INTO message_embeddings (message_id, embedding) VALUES (?, ?)",
-                    (message_id, blob),
-                )
-        except sqlite3.Error as e:
-            print(f"Embedding write error: {e}")
-
-    def search_messages(self, server_id: str, embedding: list[float], limit: int = 3, hours: int | None = None) -> list[dict]:
-        """Returns the closest messages to the given embedding vector, scoped to a server.
-        Optionally restrict to messages from the past `hours` hours."""
-        blob = struct.pack(f"{len(embedding)}f", *embedding)
-        time_filter = "AND r.timestamp >= datetime('now', ?)" if hours is not None else ""
-        slash_filter = "AND r.content NOT LIKE '/%'"
-        params = [blob, server_id] + ([f"-{hours} hours"] if hours is not None else []) + [limit]
-        try:
-            with self._get_connection() as conn:
-                rows = conn.execute(
-                    f"""
-                    SELECT r.message_id, r.username, r.content, r.channel_id, r.channel_name,
-                           vec_distance_cosine(me.embedding, ?) AS distance
-                    FROM message_embeddings me
-                    JOIN raw_messages r ON me.message_id = r.message_id
-                    WHERE r.server_id = ?
-                    {time_filter}
-                    {slash_filter}
-                    ORDER BY distance ASC
-                    LIMIT ?
-                    """,
-                    params,
-                ).fetchall()
-            return [
-                {"message_id": message_id, "username": username, "content": content,
-                 "channel_id": channel_id, "channel_name": channel_name, "distance": distance}
-                for message_id, username, content, channel_id, channel_name, distance in rows
-            ]
-        except sqlite3.Error as e:
-            print(f"Embedding search error: {e}")
-            return []
 
     def search_rag_chunks(self, server_id: str, embedding: list[float], limit: int = 5, hours: int | None = None) -> list[dict]:
         """Returns the closest RAG chunks to the given embedding vector, scoped to a server.
