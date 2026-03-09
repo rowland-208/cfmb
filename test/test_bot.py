@@ -194,7 +194,7 @@ async def test_handle_help_command(mock_discord_message):
     mock_discord_message.channel.send.assert_called_once()  # Check that a message was sent
     sent_message = mock_discord_message.channel.send.call_args[0][0]
     assert "/system" in sent_message
-    assert "/points" in sent_message
+    assert "/search" in sent_message
 
 
 def test_resolve_chain_id_no_reference(mock_discord_message, mock_db_manager):
@@ -223,20 +223,3 @@ def test_resolve_chain_id_reference_not_found(mock_discord_message, mock_db_mana
     assert bot.resolve_chain_id(mock_discord_message) == "999"
 
 
-@pytest.mark.asyncio
-async def test_handle_guild_points_command_get(
-    mock_discord_message, mock_db_manager, mock_config
-):
-    bot.db_manager = mock_db_manager
-    bot.config = mock_config
-    # Test getting points.
-    mock_discord_message.author.id = 1
-    mock_discord_message.author.display_name = "User1"
-    mock_db_manager.get_member_points.return_value = 10
-    mock_discord_message.content = "/points"
-
-    await bot.handle_guild_points_command(mock_discord_message)
-    mock_db_manager.get_member_points.assert_called_with(1)
-    mock_discord_message.channel.send.assert_called_with(
-        "🏆 Guild Points 🏆\nUser1 --> 10"
-    )

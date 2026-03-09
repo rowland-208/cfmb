@@ -196,16 +196,8 @@ async def on_message(message):
         await handle_context_command(message, server_id, chain_id)
         return
 
-    if message.content.startswith("/events"):
-        await handle_event_command(message, server_id, chain_id)
-        return
-
     if message.content.startswith("/help"):
         await handle_help_command(message)
-        return
-
-    if message.content.startswith("/points"):
-        await handle_guild_points_command(message)
         return
 
     if message.content.startswith("/system"):
@@ -218,14 +210,6 @@ async def on_message(message):
 
     if message.content.startswith("/exec"):
         await handle_exec_command(message)
-        return
-
-    if message.content.startswith("/generate"):
-        await handle_generate_command(message)
-        return
-
-    if message.content.startswith("/recall"):
-        await handle_recall_command(message, server_id)
         return
 
     if message.content.startswith("/preview"):
@@ -253,43 +237,10 @@ async def on_message(message):
         await handle_bot_mention(message, server_id, chain_id, skip_moderation=True, save_thinking=True)
         return
 
-    if message.content.startswith("/unhinged"):
-        message.content = message.content.replace("/unhinged", "", 1).strip()
-        await handle_bot_mention(message, server_id, chain_id, skip_moderation=True)
-        return
-
     if client.user in message.mentions:
         await handle_bot_mention(message, server_id, chain_id)
         return
 
-
-
-async def handle_guild_points_command(message):
-    valid_user_ids = (config.ADMIN1_USER_ID, config.ADMIN2_USER_ID)
-
-    if match := re.match(r"/points\s+([-+]?\d+)\s+.*", message.content):
-        if message.author.id not in valid_user_ids:
-            await message.channel.send(f"Nice try {message.author.display_name} 🙄")
-            return
-
-        points = int(match.group(1))
-        for member in message.mentions:
-            db_manager.add_member_points(member.id, points)
-
-        await message.channel.send(f"Guild points set")
-
-        return
-
-    if message.content.startswith("/points"):
-        s = "🏆 Guild Points 🏆"
-        points = db_manager.get_member_points(message.author.id)
-        s += f"\n{message.author.display_name} --> {points}"
-        for member in message.mentions:
-            if member.id == message.author.id:
-                continue
-            points = db_manager.get_member_points(member.id)
-            s += f"\n{member.display_name} --> {points}"
-        await message.channel.send(s[: config.DISCORD_MAX_MESSAGE_LENGTH])
 
 
 async def handle_context_command(message, server_id, chain_id):
@@ -345,39 +296,6 @@ async def handle_exec_command(message):
             )
     else:
         await message.channel.send("You do not have permission to execute commands ❌")
-
-
-async def handle_recall_command(message, server_id):
-    """Handles the /recall command — prints the last N raw messages."""
-    arg = message.content.replace("/recall", "", 1).strip()
-    try:
-        limit = int(arg) if arg else 10
-    except ValueError:
-        await message.channel.send("Usage: `/recall [n]` — n must be an integer")
-        return
-
-    raw = db_manager.get_recent_raw_messages(server_id, limit)
-    if not raw:
-        await message.channel.send("No messages recorded yet.")
-        return
-
-    grouped = {}
-    for m in raw:
-        cid = m["channel_id"] or "unknown"
-        grouped.setdefault(cid, []).append(m)
-
-    lines = []
-    for cid, msgs in grouped.items():
-        ch_name = msgs[-1]["channel_name"] or ""
-        ch_id_trim = cid[-5:] if cid != "unknown" else "unknown"
-        lines.append(f"--- {ch_name} ...{ch_id_trim} ---")
-        for m in msgs:
-            content = m["content"].replace("\t", " ").replace("\n", " ")
-            words = content.split(" ")
-            snippet = " ".join(words[:5]) + " ... " + " ".join(words[-5:]) if len(words) > 10 else content
-            lines.append(f"...{m['message_id'][-5:]} :: {m['username']} :: {snippet}")
-
-    await message.channel.send("\n".join(lines)[-config.DISCORD_MAX_MESSAGE_LENGTH:])
 
 
 async def handle_preview_command(message, server_id):
@@ -614,52 +532,21 @@ async def _annotate_with_sources(text: str, server_id: str) -> str:
     return ''.join(result)
 
 
-async def handle_generate_command(message):
-    """Generates an image from a text prompt using Ollama and posts it to the channel."""
-    if not config.OLLAMA_IMAGE_MODEL:
-        await message.channel.send(
-            "Image generation is not configured. "
-            "Ask an admin to set the `OLLAMA_IMAGE_MODEL` environment variable (e.g. `x/flux2-klein`)."
-        )
-        return
-
-    prompt = message.content.replace("/generate", "", 1).strip()
-    if not prompt:
-        await message.channel.send("Please provide a prompt: `/generate <description>`")
-        return
-
-    async with message.channel.typing():
-        image_bytes = await llm_client.generate_image(prompt, config.OLLAMA_IMAGE_MODEL)
-
-    if image_bytes:
-        file = discord.File(io.BytesIO(image_bytes), filename="generated.png")
-        await message.channel.send(file=file)
-    else:
-        await message.channel.send("Sorry, I encountered an error generating the image.")
-
-
 async def handle_help_command(message):
     await message.channel.send(
         """
     /system :: Print the system prompt
 /set_system <text> :: Set the system prompt
-/event <optional question> :: Get information about upcoming events. Optional text to ask questions about upcoming events
-/generate <description> :: Generate an image from a text description
-/recall [n] :: Print the last n messages in this server (default 10)
-/search <text> :: Semantic search — find the 3 most relevant past messages
+/search <text> :: Semantic search — find the 3 most relevant conversation chunks
 /summary :: Summarize the past 24 hours of messages by channel
-/points @user1 @user2 ... :: Get guild points for the requested users including the sender
-/points <value> @user1 @user2 ... :: Add guild points for the requested users, only available for admins
+/context :: Show recent conversation chains
+/preview <text> :: Show full system prompt without calling the LLM
+/profile :: Show your saved user profile
+/profile_gen :: Generate a new user profile
+/debug <text> :: Call LLM with debug output enabled
 @CFMB <text> :: Mention @CFMB to trigger the CFMB LLM; alternatively reply to a message from CFMB to trigger
-/unhinged <text> :: Same as mentioning @CFMB but skips content moderation
     """
     )
-
-
-async def handle_event_command(message, server_id, chain_id):
-    prefix = f"Tell me about events at {config.MEETUP_URL} " if config.MEETUP_URL else ""
-    message.content = prefix + message.content[7:]
-    await handle_bot_mention(message, server_id, chain_id)
 
 
 async def handle_bot_mention(message, server_id, chain_id, skip_moderation=True, save_thinking=False):
