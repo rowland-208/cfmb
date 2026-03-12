@@ -176,9 +176,11 @@ class LLMClient:
                     break
 
                 # Append assistant message with tool calls, execute tools, and loop
+                # Discard any content from this round — models sometimes emit
+                # raw tool-call JSON as content text alongside tool_calls.
                 messages.append({
                     "role": "assistant",
-                    "content": content_text,
+                    "content": "",
                     "tool_calls": tool_calls,
                 })
                 for tc in tool_calls:
