@@ -116,6 +116,15 @@ class DatabaseManager:
                 )
                 cursor.execute(
                     """
+                    CREATE TABLE IF NOT EXISTS summaries (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        content TEXT
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS rag_chunks (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         server_id TEXT,
@@ -279,9 +288,36 @@ class DatabaseManager:
                     WHERE server_id = ?
                       AND timestamp >= datetime('now', '-24 hours')
                       AND channel_name IS NOT NULL
+                      AND content NOT LIKE '/%'
                     ORDER BY channel_id, timestamp ASC
                     """,
                     (server_id,),
+                )
+                rows = cursor.fetchall()
+            return [
+                {"username": username, "content": content, "channel_id": channel_id, "channel_name": channel_name}
+                for username, content, channel_id, channel_name in rows
+            ]
+        except sqlite3.Error as e:
+            print(f"Database read error: {e}")
+            return []
+
+    def get_raw_messages_date_range(self, server_id, start_iso, end_iso):
+        """Retrieves raw messages between two ISO timestamps, ordered by channel then time."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT username, content, channel_id, channel_name FROM raw_messages
+                    WHERE server_id = ?
+                      AND timestamp >= ?
+                      AND timestamp < ?
+                      AND channel_name IS NOT NULL
+                      AND content NOT LIKE '/%'
+                    ORDER BY channel_id, timestamp ASC
+                    """,
+                    (server_id, start_iso, end_iso),
                 )
                 rows = cursor.fetchall()
             return [
@@ -493,6 +529,30 @@ class DatabaseManager:
             ]
         except sqlite3.Error as e:
             print(f"RAG chunk search error: {e}")
+            return []
+
+    def write_summary(self, content):
+        """Saves a generated daily summary to the summaries table."""
+        try:
+            with self._get_connection() as conn:
+                conn.execute(
+                    "INSERT INTO summaries (content) VALUES (?)",
+                    (content,),
+                )
+        except sqlite3.Error as e:
+            print(f"Summary write error: {e}")
+
+    def get_recent_summaries(self, limit=3):
+        """Returns the most recent summaries, newest first."""
+        try:
+            with self._get_connection() as conn:
+                rows = conn.execute(
+                    "SELECT timestamp, content FROM summaries ORDER BY id DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            return [{"timestamp": row[0], "content": row[1]} for row in rows]
+        except sqlite3.Error as e:
+            print(f"Summary read error: {e}")
             return []
 
     def add_member_points(self, member_id, points):

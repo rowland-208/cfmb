@@ -76,6 +76,7 @@ EMOJI_PATTERN = re.compile(
 
 NOON_EASTERN = time(config.NEWSLETTER_HOUR_ET, 0, tzinfo=ZoneInfo("America/New_York"))
 FOUR_AM_EASTERN = time(4, 0, tzinfo=ZoneInfo("America/New_York"))
+FIVE_AM_EASTERN = time(5, 0, tzinfo=ZoneInfo("America/New_York"))
 
 
 @client.event
@@ -84,19 +85,91 @@ async def on_ready():
     db_manager.initialize_db()
     llm_worker_task = client.loop.create_task(llm_worker())
     emoji_worker_task = client.loop.create_task(emoji_reaction_worker())
-    daily_summary.start()
+    daily_newsletter.start()
     daily_profiles.start()
+    daily_summary.start()
     print(f"Bot is online as {client.user}!")
 
 
 @tasks.loop(time=NOON_EASTERN)
+async def daily_newsletter():
+    channel = client.get_channel(config.NEWSLETTER_CHANNEL_ID)
+    if not channel:
+        print("Daily newsletter: newsletter channel not found.")
+        return
+    server_id = str(channel.guild.id)
+    await post_newsletter(server_id, channel)
+
+
+async def generate_summary(server_id):
+    """Generates a key-facts summary for the past 24 hours and returns it as a string."""
+    raw = db_manager.get_raw_messages_24h(server_id)
+    if not raw:
+        return None
+
+    excluded = set(config.DEV_EXCLUDED_CHANNELS.split(",")) if config.DEV_EXCLUDED_CHANNELS else set()
+
+    channels = {}
+    for m in raw:
+        cid = m["channel_id"] or "unknown"
+        if cid in excluded:
+            continue
+        channels.setdefault(cid, {"name": m["channel_name"] or cid, "messages": []})
+        channels[cid]["messages"].append(m)
+
+    if not channels:
+        return None
+
+    transcript_blocks = []
+    for data in channels.values():
+        ch_name = data["name"]
+        lines = [f"{m['username']}: {m['content']}" for m in data["messages"]]
+        transcript_blocks.append(f"#{ch_name}\n" + "\n".join(lines))
+
+    transcript = "\n---\n".join(transcript_blocks)
+
+    prompt = [
+        {
+            "role": "system",
+            "content": (
+                "You are an analyst for the Cape Fear Makers Guild Discord server. "
+                "You will be given a transcript of the past 24 hours of messages grouped by channel. "
+                "Identify the five most important facts, events, announcements, plans, or pieces of information. "
+                "For each fact, list the users involved and the channel it came from.\n\n"
+                "Return ONLY the facts in this exact format, separated by ---:\n\n"
+                "what: one sentence describing the fact\n"
+                "users: user1, user2\n"
+                "channel: #channel-name\n"
+                "---\n"
+                "what: another fact\n"
+                "users: user3\n"
+                "channel: #other-channel\n\n"
+                "Do not add any other text, headers, or commentary."
+            ),
+        },
+        {
+            "role": "user",
+            "content": transcript,
+        },
+    ]
+
+    return await llm_client.get_completion(prompt)
+
+
+@tasks.loop(time=FIVE_AM_EASTERN)
 async def daily_summary():
+    """Generates a key-facts summary and saves it to the database."""
     channel = client.get_channel(config.NEWSLETTER_CHANNEL_ID)
     if not channel:
         print("Daily summary: newsletter channel not found.")
         return
     server_id = str(channel.guild.id)
-    await post_summaries(server_id, channel)
+    result = await generate_summary(server_id)
+    if result:
+        db_manager.write_summary(result)
+        print("Daily summary: saved summary to database.")
+    else:
+        print("Daily summary: no summary generated.")
 
 
 def _build_profile_prompt(username, transcript):
@@ -233,8 +306,12 @@ async def on_message(message):
         await handle_websearch_command(message)
         return
 
-    if message.content.startswith("/summary"):
+    if message.content.startswith("/_summary"):
         await handle_summary_command(message, server_id)
+        return
+
+    if message.content.startswith("/summary"):
+        await handle_newsletter_command(message, server_id)
         return
 
     if message.content.startswith("/debug"):
@@ -418,15 +495,36 @@ async def handle_websearch_command(message):
 
 
 async def handle_summary_command(message, server_id):
+    """Handles the /_summary command — extracts key facts from the past 24 hours."""
+    raw = db_manager.get_raw_messages_24h(server_id)
+    if not raw:
+        await message.channel.send("No messages in the past 24 hours.")
+        return
+
+    async with message.channel.typing():
+        result = await generate_summary(server_id)
+
+    if not result:
+        await message.channel.send("Failed to generate summary.")
+        return
+
+    await message.channel.send(f"**Key facts from the past 24 hours**")
+    for entry in result.strip().split("---"):
+        entry = entry.strip()
+        if entry:
+            await message.channel.send(f">>> {entry}"[:DISCORD_HARD_LIMIT])
+
+
+async def handle_newsletter_command(message, server_id):
     """Summarizes the past 24 hours of messages per channel."""
     raw = db_manager.get_raw_messages_24h(server_id)
     if not raw:
         await message.channel.send("No messages in the past 24 hours.")
         return
-    await post_summaries(server_id, message.channel)
+    await post_newsletter(server_id, message.channel)
 
 
-async def post_summaries(server_id, channel):
+async def post_newsletter(server_id, channel):
     """Generates and posts per-channel summaries for the past 24 hours."""
     raw = db_manager.get_raw_messages_24h(server_id)
     if not raw:
