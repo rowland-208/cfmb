@@ -194,7 +194,7 @@ async def test_handle_help_command(mock_discord_message):
     mock_discord_message.channel.send.assert_called_once()  # Check that a message was sent
     sent_message = mock_discord_message.channel.send.call_args[0][0]
     assert "/system" in sent_message
-    assert "/search" in sent_message
+    assert "/guildsearch" in sent_message
 
 
 def test_resolve_chain_id_no_reference(mock_discord_message, mock_db_manager):

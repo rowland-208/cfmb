@@ -5,6 +5,7 @@ discord
 ollama
 requests
 pydantic
+pydantic-settings
 python-dotenv
 sqlite-vec
 tqdm

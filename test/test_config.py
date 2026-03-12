@@ -20,7 +20,7 @@ def test_config_valid_env_vars(mocker: MockerFixture):
             "ADMIN2_USER_ID": "456",
         },
     )
-    config = Config.readenv()
+    config = Config()
 
     assert config.DISCORD_BOT_TOKEN == "test_token"
     assert config.OLLAMA_MODEL == "test_model"
@@ -36,11 +36,11 @@ def test_config_invalid_int_value(mocker: MockerFixture):
     mocker.patch.dict(os.environ, {"NUM_CLOSEST_MESSAGES": "invalid"})
 
     with pytest.raises(ValidationError):
-        config = Config.readenv()
+        Config()
 
 
 def test_config_missing_env_var(mocker: MockerFixture):
     mocker.patch.dict(os.environ, {}, clear=True)
 
-    with pytest.raises(KeyError):
-        config = Config.readenv()
+    with pytest.raises(ValidationError):
+        Config(_env_file=None)

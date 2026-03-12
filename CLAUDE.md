@@ -18,6 +18,11 @@ CFMB (Cape Fear Makers Bot) is a Discord bot for the Cape Fear Makers Guild. It 
 ./test.sh
 ```
 
+**Restart the bot:**
+```bash
+systemctl --user restart cfmb
+```
+
 **Run tests using test.sh** (sets up venv and env vars automatically):
 ```bash
 ./test.sh

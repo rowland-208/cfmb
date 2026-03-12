@@ -5,6 +5,19 @@ import time
 import ollama
 import requests
 
+from cfmb.config import config as _config
+
+
+def _llm_options():
+    return {
+        "temperature": _config.LLM_TEMPERATURE,
+        "top_p": _config.LLM_TOP_P,
+        "top_k": _config.LLM_TOP_K,
+        "min_p": _config.LLM_MIN_P,
+        "presence_penalty": _config.LLM_PRESENCE_PENALTY,
+        "repeat_penalty": _config.LLM_REPEAT_PENALTY,
+    }
+
 
 class LLMClient:
     def __init__(self, model_name):
@@ -64,14 +77,7 @@ class LLMClient:
             response = await self.async_client.chat(
                 model=self.model_name,
                 messages=messages,
-                options={
-                    "temperature": 1.0,
-                    "top_p": 0.95,
-                    "top_k": 20,
-                    "min_p": 0.0,
-                    "presence_penalty": 1.5,
-                    "repeat_penalty": 1.0,
-                },
+                options={**_llm_options(), "temperature": 0.6, "presence_penalty": 0.0},
             )
             return response["message"]["content"]
         except Exception as e:
@@ -89,14 +95,7 @@ class LLMClient:
             chat_kwargs = dict(
                 model=self.model_name,
                 messages=messages,
-                options={
-                    "temperature": 1.0,
-                    "top_p": 0.95,
-                    "top_k": 20,
-                    "min_p": 0.0,
-                    "presence_penalty": 1.5,
-                    "repeat_penalty": 1.0,
-                },
+                options=_llm_options(),
             )
             if tools:
                 chat_kwargs["tools"] = tools
@@ -147,14 +146,7 @@ class LLMClient:
                 messages=messages,
                 stream=True,
                 think=True,
-                options={
-                    "temperature": 1.0,
-                    "top_p": 0.95,
-                    "top_k": 20,
-                    "min_p": 0.0,
-                    "presence_penalty": 1.5,
-                    "repeat_penalty": 1.0,
-                },
+                options=_llm_options(),
             )
             if tools:
                 chat_kwargs["tools"] = tools

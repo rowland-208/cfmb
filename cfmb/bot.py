@@ -225,8 +225,12 @@ async def on_message(message):
         await handle_profile_command(message, server_id)
         return
 
-    if message.content.startswith("/search"):
-        await handle_search_command(message, server_id)
+    if message.content.startswith("/guildsearch"):
+        await handle_guildsearch_command(message, server_id)
+        return
+
+    if message.content.startswith("/websearch"):
+        await handle_websearch_command(message)
         return
 
     if message.content.startswith("/summary"):
@@ -360,15 +364,15 @@ async def handle_profile_command(message, server_id):
     await message.channel.send(f"{row['profile']}\n\n*Generated: {created_at}*"[: config.DISCORD_MAX_MESSAGE_LENGTH])
 
 
-async def handle_search_command(message, server_id):
-    """Handles the /search command — finds the 5 most semantically similar RAG chunks."""
+async def handle_guildsearch_command(message, server_id):
+    """Handles the /guildsearch command — finds the 5 most semantically similar RAG chunks."""
     if not config.OLLAMA_EMBEDDING_MODEL:
         await message.channel.send("Search is not configured (no `OLLAMA_EMBEDDING_MODEL` set).")
         return
 
-    query = message.content.replace("/search", "", 1).strip()
+    query = message.content.replace("/guildsearch", "", 1).strip()
     if not query:
-        await message.channel.send("Usage: `/search <text>`")
+        await message.channel.send("Usage: `/guildsearch <text>`")
         return
 
     async with message.channel.typing():
@@ -391,6 +395,26 @@ async def handle_search_command(message, server_id):
         header = f"Chunk `{r['id']}` · #{r['channel_name'] or 'unknown'} · {score} match · [jump]({url})"
         msg = f"{header}\n>>> {r['content']}"
         await message.channel.send(msg[:DISCORD_HARD_LIMIT])
+
+
+async def handle_websearch_command(message):
+    """Handles the /websearch command — searches the web via Brave Search."""
+    query = message.content.replace("/websearch", "", 1).strip()
+    if not query:
+        await message.channel.send("Usage: `/websearch <query>`")
+        return
+
+    from cfmb.tools.websearch import WebSearchTool
+    tool = WebSearchTool()
+
+    async with message.channel.typing():
+        result = await tool.run({"query": query}, {})
+
+    await message.channel.send(f"**Web results for** `{query[:50]}`")
+    # Split results and send each as a separate message
+    for entry in result.split("\n---\n"):
+        if entry.strip():
+            await message.channel.send(f">>> {entry.strip()}"[:DISCORD_HARD_LIMIT])
 
 
 async def handle_summary_command(message, server_id):
@@ -539,7 +563,7 @@ async def handle_help_command(message):
         """
     /system :: Print the system prompt
 /set_system <text> :: Set the system prompt
-/search <text> :: Semantic search — find the 3 most relevant conversation chunks
+/guildsearch <text> :: Semantic search — find the 3 most relevant conversation chunks
 /summary :: Summarize the past 24 hours of messages by channel
 /context :: Show recent conversation chains
 /preview <text> :: Show full system prompt without calling the LLM
@@ -672,39 +696,6 @@ async def _build_system_prompt(message, server_id, user_content, id_to_name=None
     return system_prompt
 
 
-SEARCH_TOOL = {
-    'type': 'function',
-    'function': {
-        'name': 'search',
-        'description': 'Search recent conversations from the past week. Use this to find what people have been talking about.',
-        'parameters': {
-            'type': 'object',
-            'required': ['query'],
-            'properties': {
-                'query': {
-                    'type': 'string',
-                    'description': 'The search query text',
-                },
-            },
-        },
-    },
-}
-
-
-async def _handle_search_tool(query: str, server_id: str, id_to_name: dict) -> str:
-    """Executes the search tool: embeds the query and returns the closest RAG chunk from the past week."""
-    if not config.OLLAMA_EMBEDDING_MODEL:
-        return "Search is not available."
-    embedding = await llm_client.get_embedding(query, config.OLLAMA_EMBEDDING_MODEL)
-    if not embedding:
-        return "Failed to generate embedding for search query."
-    excluded = set(config.DEV_EXCLUDED_CHANNELS.split(",")) if config.DEV_EXCLUDED_CHANNELS else None
-    chunks = db_manager.search_rag_chunks(server_id, embedding, limit=1, hours=168, exclude_channels=excluded)
-    if not chunks:
-        return "No matching conversations found."
-    r = chunks[0]
-    content = _resolve_mentions(r['content'], id_to_name)
-    return f"[#{r['channel_name'] or 'unknown'}]\n{content}"
 
 
 DISCORD_HARD_LIMIT = 2000
@@ -777,33 +768,35 @@ async def _stream_llm(message, context_messages, tools=None, tool_handler=None, 
 
     if debug:
         buffer = ""
+        pending_messages = asyncio.Queue()
         done = asyncio.Event()
         phase = {"current": "thinking"}
 
         async def flush_buffer():
+            """Flush accumulated buffer into pending_messages queue."""
             nonlocal buffer
             while len(buffer) >= THINKING_CHUNK_SIZE:
                 chunk = buffer[:THINKING_CHUNK_SIZE]
                 buffer = buffer[THINKING_CHUNK_SIZE:]
-                if phase["current"] == "thinking":
-                    display = _format_thinking(chunk, truncate=False)
-                else:
-                    display = chunk[:DISCORD_HARD_LIMIT]
-                await message.channel.send(display)
+                display = _format_thinking(chunk, truncate=False)
+                await pending_messages.put(display)
 
-        async def consumer():
-            while not done.is_set():
-                await flush_buffer()
-                await asyncio.sleep(0.1)
-            await flush_buffer()
+        async def drain_buffer():
+            """Flush any remaining buffer content."""
             nonlocal buffer
             if buffer.strip():
-                if phase["current"] == "thinking":
-                    display = _format_thinking(buffer, truncate=False)
-                else:
-                    display = buffer[:DISCORD_HARD_LIMIT]
-                await message.channel.send(display)
+                display = _format_thinking(buffer, truncate=False)
+                await pending_messages.put(display)
                 buffer = ""
+
+        async def consumer():
+            while True:
+                try:
+                    msg = await asyncio.wait_for(pending_messages.get(), timeout=0.1)
+                    await message.channel.send(msg)
+                except asyncio.TimeoutError:
+                    if done.is_set() and pending_messages.empty():
+                        break
 
         consumer_task = asyncio.create_task(consumer())
 
@@ -816,24 +809,26 @@ async def _stream_llm(message, context_messages, tools=None, tool_handler=None, 
             nonlocal buffer
             new_text = thinking_so_far[last_thinking_len:]
             buffer += new_text
+            await flush_buffer()
         last_thinking_len = len(thinking_so_far)
 
     async def on_content_cb(content_so_far):
         nonlocal last_content_len
         if debug:
-            nonlocal buffer
-            if phase["current"] == "thinking":
-                phase["current"] = "content"
-            new_text = content_so_far[last_content_len:]
-            buffer += new_text
+            pass  # content goes in the final reply, not debug stream
         last_content_len = len(content_so_far)
 
     async def on_tool_call_cb(name, args, result):
         if debug:
-            nonlocal buffer, last_content_len
-            phase["current"] = "content"
-            tool_text = f"\n🔧 **Tool: {name}**\nQuery: `{args.get('query', '')}`\nResult:\n>>> {result}\n\n"
-            buffer += tool_text
+            nonlocal last_content_len
+            # Flush any pending thinking before the tool call message
+            await drain_buffer()
+            args_str = str(args)[:200]
+            result_str = str(result)[:300]
+            lines = f"Input: `{args_str}`\nResult: {result_str}".split("\n")
+            quoted = "\n".join(f"> {line}" for line in lines)
+            tool_text = f"🔧 **Tool: {name}**\n{quoted}"
+            await pending_messages.put(tool_text[:DISCORD_HARD_LIMIT])
             last_content_len = 0
 
     thinking_text, content_text = await llm_client.get_completion_streaming(
@@ -842,6 +837,7 @@ async def _stream_llm(message, context_messages, tools=None, tool_handler=None, 
     )
 
     if debug:
+        await drain_buffer()
         done.set()
         await consumer_task
 
@@ -894,12 +890,16 @@ async def process_llm_request(message, server_id, chain_id, skip_moderation=True
 
     print("Running llm...")
 
-    tools = [SEARCH_TOOL] if config.OLLAMA_EMBEDDING_MODEL else None
+    from cfmb.tools import get_tools, get_tool
+    active_tools = get_tools()
+    tools = [t.schema() for t in active_tools] or None
+    tool_context = {"server_id": server_id, "id_to_name": id_to_name, "llm_client": llm_client, "db_manager": db_manager}
 
     async def tool_handler(name, args):
-        if name == "search":
-            return await _handle_search_tool(args.get("query", ""), server_id, id_to_name)
-        return f"Unknown tool: {name}"
+        tool = get_tool(name)
+        if not tool:
+            return f"Unknown tool: {name}"
+        return await tool.run(args, tool_context)
 
     # Post a status message and cycle through statuses while streaming
     start_idx = random.randrange(len(THINKING_STATUS_MESSAGES))
