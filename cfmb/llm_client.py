@@ -1,6 +1,8 @@
 import asyncio
 import base64
+import sys
 import time
+import traceback
 
 import ollama
 import requests
@@ -119,7 +121,8 @@ class LLMClient:
                     })
 
         except Exception as e:
-            print(f"LLM error: {e}")
+            print(f"LLM error: {e}", file=sys.stderr, flush=True)
+            traceback.print_exc(file=sys.stderr)
             return None
 
     async def get_completion_streaming(self, messages, on_thinking=None, on_content=None,
@@ -204,7 +207,8 @@ class LLMClient:
 
             return thinking_text, content_text
         except Exception as e:
-            print(f"LLM streaming error: {e}")
+            print(f"LLM streaming error: {e}", file=sys.stderr, flush=True)
+            traceback.print_exc(file=sys.stderr)
             return None, None
 
     async def get_embedding(self, text: str, embedding_model: str) -> list[float] | None:

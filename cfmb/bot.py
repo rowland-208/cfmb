@@ -1055,6 +1055,7 @@ async def process_llm_request(message, server_id, chain_id, skip_moderation=True
     if bot_response_content:
         reply = await message.reply(bot_response_content[: config.DISCORD_MAX_MESSAGE_LENGTH])
     else:
+        print("Error: LLM returned empty response, replying with error message", file=sys.stderr, flush=True)
         await message.reply("Sorry, I encountered an error generating a response.")
         return
 
