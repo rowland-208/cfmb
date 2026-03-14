@@ -719,7 +719,7 @@ async def process_emoji_reaction(message):
                 "About 1% of the time respond with exactly one emoji character that fits the message. "
                 "If the user seems excited, increase the odds of reacting to 10%. "
                 "The other times respond with exactly the word 'next'. "
-                "Prefer emojis like 😂❤️👏🧠⚒️🤘🚀🤖 but choose whichever fits best. "
+                "Prefer emojis like 🐻🛠️⚙️🏭🛰️⭐✊ but choose whichever fits best. "
                 "Output only the emoji or the word 'next' — nothing else."
             ),
         },
