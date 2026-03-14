@@ -663,40 +663,17 @@ async def _annotate_with_sources(text: str, server_id: str) -> str:
     return ''.join(result)
 
 
-BUGS_IMAGE = pathlib.Path(__file__).resolve().parent.parent / "static" / "communist_bugs_bunny.png"
-MEME_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-
-
 async def handle_bugs_command(message):
     """Handles the /bugs command — renders text on Communist Bugs Bunny and posts it."""
+    from cfmb.tools.bugs import BUGS_IMAGE, render_bugs_meme
+
     text = message.content.replace("/bugs", "", 1).strip().upper()
     text = f"OUR {text}" if text else ""
     if not text:
         await message.channel.send(file=discord.File(BUGS_IMAGE))
         return
 
-    from PIL import ImageDraw, ImageFont
-
-    img = Image.open(BUGS_IMAGE).convert("RGB")
-    draw = ImageDraw.Draw(img)
-    font_size = max(12, int(img.height * 0.10))
-    font = ImageFont.truetype(MEME_FONT, font_size)
-
-    bbox = draw.textbbox((0, 0), text, font=font)
-    text_w = bbox[2] - bbox[0]
-    text_h = bbox[3] - bbox[1]
-    x = (img.width - text_w) // 2
-    y = int(img.height * 0.90) - text_h // 2
-
-    # Black outline
-    for dx in (-2, -1, 0, 1, 2):
-        for dy in (-2, -1, 0, 1, 2):
-            draw.text((x + dx, y + dy), text, font=font, fill="black")
-    draw.text((x, y), text, font=font, fill="white")
-
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG")
-    buf.seek(0)
+    buf = render_bugs_meme(text)
     await message.channel.send(file=discord.File(buf, filename="bugs.jpg"))
 
 

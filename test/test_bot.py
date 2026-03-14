@@ -65,6 +65,9 @@ def mock_client(mock_db_manager, mock_llm_client):
     mock_client = MagicMock()
     mock_client.user.id = bot.config.BOT_USER_ID
     mock_client.user.name = "TestBot"
+    dev_channel = MagicMock()
+    dev_channel.send = AsyncMock()
+    mock_client.get_channel = MagicMock(return_value=dev_channel)
     return mock_client
 
 
