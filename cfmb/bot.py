@@ -634,6 +634,28 @@ async def post_newsletter(server_id, channel):
             await channel.send(section[: config.DISCORD_MAX_MESSAGE_LENGTH])
         if dad_joke:
             await channel.send(f"*{dad_joke.strip()}*")
+
+        # Step 4: Generate a chat response reacting to the summaries
+        summary_contents = curated.strip()
+        if dad_joke:
+            summary_contents += f"\n\n{dad_joke.strip()}"
+
+        user_input = (
+            "Dear comrade the capitalists have documented our uprising with their propaganda. "
+            "Please help correct these wrongdoings.\n\n" + summary_contents
+        )
+
+        system_prompt = db_manager.get_system_prompt(server_id)
+        chat_messages = [
+            system_prompt,
+            {"role": "user", "content": user_input},
+        ]
+
+        async with channel.typing():
+            chat_response = await llm_client.get_completion(chat_messages)
+
+        if chat_response:
+            await channel.send(chat_response[: config.DISCORD_MAX_MESSAGE_LENGTH])
     else:
         await channel.send(header)
 
