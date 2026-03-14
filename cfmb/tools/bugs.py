@@ -61,4 +61,4 @@ class BugsTool(Tool):
 
         buf = render_bugs_meme(text)
         await message.channel.send(file=discord.File(buf, filename="bugs.jpg"))
-        return f'Sent the Communist Bugs Bunny meme "OUR" {text.upper()} to the channel.'
+        return f'Sent the Communist Bugs Bunny meme "{text.upper()}" to the channel.'
