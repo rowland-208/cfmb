@@ -663,7 +663,7 @@ async def _annotate_with_sources(text: str, server_id: str) -> str:
     return ''.join(result)
 
 
-BUGS_IMAGE = pathlib.Path(__file__).resolve().parent.parent / "static" / "communist_bugs_bunny.jpg"
+BUGS_IMAGE = pathlib.Path(__file__).resolve().parent.parent / "static" / "communist_bugs_bunny.png"
 MEME_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 
