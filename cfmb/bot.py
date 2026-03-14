@@ -88,6 +88,9 @@ async def on_ready():
     daily_newsletter.start()
     daily_profiles.start()
     daily_summary.start()
+    dev_channel = client.get_channel(config.DEV_CHANNEL_ID)
+    if dev_channel:
+        await dev_channel.send("Restart success! привет товарищи 🐻")
     print(f"Bot is online as {client.user}!")
 
 
@@ -265,6 +268,10 @@ async def on_message(message):
         await message.add_reaction("👀")
 
     await emoji_queue.put(message)
+
+    if message.content.startswith("/bugs"):
+        await handle_bugs_command(message)
+        return
 
     if message.content.startswith("/context"):
         await handle_context_command(message, server_id, chain_id)
@@ -656,6 +663,43 @@ async def _annotate_with_sources(text: str, server_id: str) -> str:
     return ''.join(result)
 
 
+BUGS_IMAGE = pathlib.Path(__file__).resolve().parent.parent / "static" / "communist_bugs_bunny.jpg"
+MEME_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+
+async def handle_bugs_command(message):
+    """Handles the /bugs command — renders text on Communist Bugs Bunny and posts it."""
+    text = message.content.replace("/bugs", "", 1).strip().upper()
+    text = f"OUR {text}" if text else ""
+    if not text:
+        await message.channel.send(file=discord.File(BUGS_IMAGE))
+        return
+
+    from PIL import ImageDraw, ImageFont
+
+    img = Image.open(BUGS_IMAGE).convert("RGB")
+    draw = ImageDraw.Draw(img)
+    font_size = max(12, int(img.height * 0.10))
+    font = ImageFont.truetype(MEME_FONT, font_size)
+
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    x = (img.width - text_w) // 2
+    y = int(img.height * 0.90) - text_h // 2
+
+    # Black outline
+    for dx in (-2, -1, 0, 1, 2):
+        for dy in (-2, -1, 0, 1, 2):
+            draw.text((x + dx, y + dy), text, font=font, fill="black")
+    draw.text((x, y), text, font=font, fill="white")
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    buf.seek(0)
+    await message.channel.send(file=discord.File(buf, filename="bugs.jpg"))
+
+
 async def handle_help_command(message):
     await message.channel.send(
         """
@@ -991,7 +1035,7 @@ async def process_llm_request(message, server_id, chain_id, skip_moderation=True
     from cfmb.tools import get_tools, get_tool
     active_tools = get_tools()
     tools = [t.schema() for t in active_tools] or None
-    tool_context = {"server_id": server_id, "id_to_name": id_to_name, "llm_client": llm_client, "db_manager": db_manager}
+    tool_context = {"server_id": server_id, "id_to_name": id_to_name, "llm_client": llm_client, "db_manager": db_manager, "message": message}
 
     async def tool_handler(name, args):
         tool = get_tool(name)

@@ -23,6 +23,7 @@ class Config(BaseSettings):
     MEETUP_URL: Optional[str] = None
     SUMMARY_SYSTEM_PROMPT: str
     CURATION_SYSTEM_PROMPT: str
+    DEV_CHANNEL_ID: int
     DEV_EXCLUDED_CHANNELS: str = ""
     BRAVE_SEARCH_API_KEY: str
     LLM_TEMPERATURE: float
