@@ -642,7 +642,7 @@ async def post_newsletter(server_id, channel):
 
         user_input = (
             "Dear comrade the capitalists have documented our uprising with their propaganda. "
-            "Please help correct these wrongdoings.\n\n" + summary_contents
+            "Please help correct these wrongdoings.\n\n```\n" + summary_contents + "\n```"
         )
 
         system_prompt = db_manager.get_system_prompt(server_id)
