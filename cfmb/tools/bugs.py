@@ -37,8 +37,10 @@ def render_bugs_meme(text: str) -> io.BytesIO:
 class BugsTool(Tool):
     name = "bugs_meme"
     description = (
-        "Sends the Communist Bugs Bunny meme image to the channel for humorous effect. "
-        "Use this tool occasionally when the request is about equipment, supplies, or guild activities."
+        'Sends the Communist Bugs Bunny meme image to the channel for humorous effect. '
+        'If someone says "My [Good Item]," you say "Our [Good Item]. '
+        'Only use it for things people want (technology, guild supplies, prestige).'
+        'Use sparingly.'
     )
     parameters = {
         "type": "object",
@@ -46,7 +48,7 @@ class BugsTool(Tool):
         "properties": {
             "text": {
                 "type": "string",
-                "description": "A simple noun, must be guild equipment, supplies, or the word guild, e.g., 'laser cutter', 'filament', 'guild'",
+                "description": "A simple noun, must be desireable, 'laser cutter', 'filament', 'guild'",
             },
         },
     }
