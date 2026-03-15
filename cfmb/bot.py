@@ -693,8 +693,8 @@ async def handle_cfmb_set_command(message):
 
     if key == "model":
         valid_models = [config.OLLAMA_MODEL]
-        if config.VALID_MODELS:
-            valid_models += [m.strip() for m in config.VALID_MODELS.split(",") if m.strip()]
+        if config.OTHER_VALID_MODELS:
+            valid_models += [m.strip() for m in config.OTHER_VALID_MODELS.split(",") if m.strip()]
         if value not in valid_models:
             await message.channel.send(f"Invalid model. Valid models: {', '.join(valid_models)}")
             return

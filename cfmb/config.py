@@ -32,7 +32,7 @@ class Config(BaseSettings):
     LLM_MIN_P: float
     LLM_PRESENCE_PENALTY: float
     LLM_REPEAT_PENALTY: float
-    VALID_MODELS: str = ""
+    OTHER_VALID_MODELS: str = ""
     THINK_ENABLED: bool = True
 
 
