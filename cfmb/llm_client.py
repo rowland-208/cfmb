@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import re
 import sys
 import time
 import traceback
@@ -109,7 +110,10 @@ class LLMClient:
                 msg = response["message"]
 
                 if not tools or not msg.get("tool_calls"):
-                    return msg["content"]
+                    content = msg["content"]
+                    # Strip leaked <think> tags that some models include in content
+                    content = re.sub(r"<think>[\s\S]*?</think>\s*", "", content)
+                    return content
 
                 messages.append(msg)
                 for tc in msg["tool_calls"]:
@@ -216,7 +220,9 @@ class LLMClient:
                         "content": str(result),
                     })
                 # Reset for next round
+                thinking_text = ""
                 content_text = ""
+                thinking_tokens = 0
                 content_tokens = 0
 
             t_end = time.monotonic()

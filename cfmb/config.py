@@ -35,6 +35,8 @@ class Config(BaseSettings):
     OLLAMA_FAST_MODEL: str = ""
     LLM_WORKER_COUNT: int = 2
     EMOJI_WORKER_COUNT: int = 2
+    LLM_TIMEOUT_SECONDS: int = 300
+    LLM_TIMEOUT_MESSAGE: str = "Comrade, our computational resources have been temporarily diverted to the greater good. Please try again later. 🐻"
 
 
 config = Config()

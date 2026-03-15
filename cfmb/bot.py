@@ -273,10 +273,6 @@ async def on_message(message):
         await handle_bugs_command(message)
         return
 
-    if message.content.startswith("/cfmb-restart"):
-        await handle_cfmb_restart_command(message)
-        return
-
     if message.content.startswith("/cfmb-set"):
         await handle_cfmb_set_command(message)
         return
@@ -685,13 +681,6 @@ async def handle_bugs_command(message):
     await message.channel.send(file=discord.File(buf, filename="bugs.jpg"))
 
 
-async def handle_cfmb_restart_command(message):
-    """Handles /cfmb-restart — restarts the bot via systemctl."""
-    await message.channel.send("Restarting...")
-    import os
-    os._exit(0)
-
-
 async def handle_cfmb_set_command(message):
     """Handles /cfmb-set <fast|slow> — switch between fast and slow mode."""
     parts = message.content.split()
@@ -732,7 +721,6 @@ async def handle_help_command(message):
 /profile_gen :: Generate a new user profile
 /debug <text> :: Call LLM with debug output enabled
 /cfmb-set <fast|slow> :: Switch between fast and slow mode
-/cfmb-restart :: Restart the bot
 @CFMB <text> :: Mention @CFMB to trigger the CFMB LLM; alternatively reply to a message from CFMB to trigger
     """
     )
@@ -1092,10 +1080,22 @@ async def process_llm_request(message, server_id, chain_id, skip_moderation=True
                 print(f"Error cycling status: {e}", file=sys.stderr, flush=True)
 
     status_task = asyncio.create_task(cycle_status())
-    _, bot_response_content, _ = await _stream_llm(
-        message, context_messages, tools=tools, tool_handler=tool_handler,
-        debug=save_thinking,
-    )
+    try:
+        async with asyncio.timeout(config.LLM_TIMEOUT_SECONDS):
+            _, bot_response_content, _ = await _stream_llm(
+                message, context_messages, tools=tools, tool_handler=tool_handler,
+                debug=save_thinking,
+            )
+    except TimeoutError:
+        print(f"LLM request timed out after {config.LLM_TIMEOUT_SECONDS}s", file=sys.stderr, flush=True)
+        done.set()
+        await status_task
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+        await message.reply(config.LLM_TIMEOUT_MESSAGE)
+        return
     done.set()
     await status_task
 
