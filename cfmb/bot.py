@@ -60,9 +60,9 @@ client = discord.Client(intents=intents)
 db_manager = DatabaseManager(config.DB_NAME)
 llm_client = LLMClient(config.OLLAMA_MODEL)
 llm_queue = asyncio.Queue()
-llm_worker_tasks = None
+llm_worker_task = None
 emoji_queue = asyncio.Queue()
-emoji_worker_tasks = None
+emoji_worker_task = None
 rag_batcher = RagBatcher(db_manager, llm_client)
 
 # Matches common Unicode emoji ranges
@@ -81,10 +81,10 @@ FIVE_AM_EASTERN = time(5, 0, tzinfo=ZoneInfo("America/New_York"))
 
 @client.event
 async def on_ready():
-    global llm_worker_tasks, emoji_worker_tasks
+    global llm_worker_task, emoji_worker_task
     db_manager.initialize_db()
-    llm_worker_tasks = [client.loop.create_task(llm_worker()) for _ in range(config.LLM_WORKER_COUNT)]
-    emoji_worker_tasks = [client.loop.create_task(emoji_reaction_worker()) for _ in range(config.EMOJI_WORKER_COUNT)]
+    llm_worker_task = client.loop.create_task(llm_worker())
+    emoji_worker_task = client.loop.create_task(emoji_reaction_worker())
     daily_newsletter.start()
     daily_profiles.start()
     daily_summary.start()
