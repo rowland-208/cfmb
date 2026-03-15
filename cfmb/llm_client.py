@@ -156,8 +156,14 @@ class LLMClient:
             if tools:
                 chat_kwargs["tools"] = tools
 
+            round_num = 0
             while True:
+                round_num += 1
+                round_start = time.monotonic()
                 tool_calls = []
+                round_thinking = 0
+                round_content = 0
+                print(f"Round {round_num}: starting chat request ({len(messages)} messages)")
                 stream = await self.async_client.chat(**chat_kwargs)
                 async for chunk in stream:
                     if t_first_token is None:
@@ -167,27 +173,37 @@ class LLMClient:
                     if msg.get("thinking"):
                         thinking_text += msg["thinking"]
                         thinking_tokens += 1
+                        round_thinking += 1
                         if on_thinking:
                             await on_thinking(thinking_text)
                     if msg.get("content"):
                         content_text += msg["content"]
                         content_tokens += 1
+                        round_content += 1
                         if on_content:
                             await on_content(content_text)
                     if msg.get("tool_calls"):
                         tool_calls.extend(msg["tool_calls"])
+                round_elapsed = time.monotonic() - round_start
+                print(f"Round {round_num} done in {round_elapsed:.2f}s: "
+                      f"thinking_tokens={round_thinking}, content_tokens={round_content}, "
+                      f"tool_calls={len(tool_calls)}, "
+                      f"thinking_chars={len(thinking_text)}, content_chars={len(content_text)}")
 
                 if not tools or not tool_calls:
                     break
 
                 # Append assistant message with tool calls, execute tools, and loop
-                # Discard any content from this round — models sometimes emit
-                # raw tool-call JSON as content text alongside tool_calls.
-                messages.append({
+                # Include content and thinking so Ollama's template properly
+                # closes </think> tags and renders the tool call correctly.
+                assistant_msg = {
                     "role": "assistant",
-                    "content": "",
+                    "content": content_text or "",
                     "tool_calls": tool_calls,
-                })
+                }
+                if thinking_text:
+                    assistant_msg["thinking"] = thinking_text
+                messages.append(assistant_msg)
                 for tc in tool_calls:
                     name = tc["function"]["name"]
                     args = tc["function"]["arguments"]

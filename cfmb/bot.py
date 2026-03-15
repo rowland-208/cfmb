@@ -688,7 +688,8 @@ async def handle_bugs_command(message):
 async def handle_cfmb_restart_command(message):
     """Handles /cfmb-restart — restarts the bot via systemctl."""
     await message.channel.send("Restarting...")
-    sys.exit(0)
+    import os
+    os._exit(0)
 
 
 async def handle_cfmb_set_command(message):
@@ -925,8 +926,13 @@ THINKING_STATUS_MESSAGES = [
 
 
 async def _stream_llm(message, context_messages, tools=None, tool_handler=None, debug=False):
-    """Streams LLM response. When debug=True, sends thinking chunks and tool call info to Discord."""
+    """Streams LLM response. When debug=True, sends thinking chunks and tool call info to Discord.
+
+    Returns (thinking_text, content_text, trace_parts) where trace_parts is a
+    list of (type, text) tuples capturing thinking and tool calls in order.
+    """
     consumer_task = None
+    trace_parts = []
 
     if debug:
         buffer = ""
@@ -981,6 +987,7 @@ async def _stream_llm(message, context_messages, tools=None, tool_handler=None, 
         last_content_len = len(content_so_far)
 
     async def on_tool_call_cb(name, args, result):
+        trace_parts.append(("tool", f"**Tool: {name}**\nInput: `{args}`\nResult: {result}"))
         if debug:
             nonlocal last_content_len
             # Flush any pending thinking before the tool call message
@@ -998,12 +1005,15 @@ async def _stream_llm(message, context_messages, tools=None, tool_handler=None, 
         tools=tools, tool_handler=tool_handler, on_tool_call=on_tool_call_cb,
     )
 
+    if thinking_text:
+        trace_parts.insert(0, ("thinking", thinking_text))
+
     if debug:
         await drain_buffer()
         done.set()
         await consumer_task
 
-    return thinking_text, content_text
+    return thinking_text, content_text, trace_parts
 
 
 
@@ -1082,7 +1092,7 @@ async def process_llm_request(message, server_id, chain_id, skip_moderation=True
                 print(f"Error cycling status: {e}", file=sys.stderr, flush=True)
 
     status_task = asyncio.create_task(cycle_status())
-    _, bot_response_content = await _stream_llm(
+    _, bot_response_content, _ = await _stream_llm(
         message, context_messages, tools=tools, tool_handler=tool_handler,
         debug=save_thinking,
     )
