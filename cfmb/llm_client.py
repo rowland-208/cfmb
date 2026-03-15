@@ -98,6 +98,7 @@ class LLMClient:
             chat_kwargs = dict(
                 model=self.model_name,
                 messages=messages,
+                think=self.think,
                 options=_llm_options(),
             )
             if tools:
