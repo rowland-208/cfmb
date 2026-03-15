@@ -33,6 +33,8 @@ class Config(BaseSettings):
     LLM_PRESENCE_PENALTY: float
     LLM_REPEAT_PENALTY: float
     OLLAMA_FAST_MODEL: str = ""
+    LLM_WORKER_COUNT: int = 2
+    EMOJI_WORKER_COUNT: int = 2
 
 
 config = Config()

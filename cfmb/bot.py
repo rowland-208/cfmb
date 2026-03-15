@@ -83,8 +83,8 @@ FIVE_AM_EASTERN = time(5, 0, tzinfo=ZoneInfo("America/New_York"))
 async def on_ready():
     global llm_worker_tasks, emoji_worker_tasks
     db_manager.initialize_db()
-    llm_worker_tasks = [client.loop.create_task(llm_worker()) for _ in range(2)]
-    emoji_worker_tasks = [client.loop.create_task(emoji_reaction_worker()) for _ in range(2)]
+    llm_worker_tasks = [client.loop.create_task(llm_worker()) for _ in range(config.LLM_WORKER_COUNT)]
+    emoji_worker_tasks = [client.loop.create_task(emoji_reaction_worker()) for _ in range(config.EMOJI_WORKER_COUNT)]
     daily_newsletter.start()
     daily_profiles.start()
     daily_summary.start()
