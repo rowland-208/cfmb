@@ -702,12 +702,12 @@ async def handle_cfmb_set_command(message):
     mode = parts[1].lower()
 
     if mode == "fast":
-        if not config.FAST_MODEL:
-            await message.channel.send("No fast model configured. Set `FAST_MODEL` in config.")
+        if not config.OLLAMA_FAST_MODEL:
+            await message.channel.send("No fast model configured. Set `OLLAMA_FAST_MODEL` in config.")
             return
-        llm_client.model_name = config.FAST_MODEL
+        llm_client.model_name = config.OLLAMA_FAST_MODEL
         llm_client.think = False
-        await message.channel.send(f"Switched to **fast** mode (`{config.FAST_MODEL}`, thinking off)")
+        await message.channel.send(f"Switched to **fast** mode (`{config.OLLAMA_FAST_MODEL}`, thinking off)")
 
     elif mode == "slow":
         llm_client.model_name = config.OLLAMA_MODEL

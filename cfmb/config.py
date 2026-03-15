@@ -32,7 +32,7 @@ class Config(BaseSettings):
     LLM_MIN_P: float
     LLM_PRESENCE_PENALTY: float
     LLM_REPEAT_PENALTY: float
-    FAST_MODEL: str = ""
+    OLLAMA_FAST_MODEL: str = ""
 
 
 config = Config()
