@@ -273,6 +273,10 @@ async def on_message(message):
         await handle_bugs_command(message)
         return
 
+    if message.content.startswith("/cfmb-restart"):
+        await handle_cfmb_restart_command(message)
+        return
+
     if message.content.startswith("/cfmb-set"):
         await handle_cfmb_set_command(message)
         return
@@ -681,6 +685,12 @@ async def handle_bugs_command(message):
     await message.channel.send(file=discord.File(buf, filename="bugs.jpg"))
 
 
+async def handle_cfmb_restart_command(message):
+    """Handles /cfmb-restart — restarts the bot via systemctl."""
+    await message.channel.send("Restarting...")
+    sys.exit(0)
+
+
 async def handle_cfmb_set_command(message):
     """Handles /cfmb-set <key> <value> — update runtime settings."""
     parts = message.content.split(None, 2)
@@ -728,6 +738,7 @@ async def handle_help_command(message):
 /profile_gen :: Generate a new user profile
 /debug <text> :: Call LLM with debug output enabled
 /cfmb-set <key> <value> :: Set runtime config (model, think)
+/cfmb-restart :: Restart the bot
 @CFMB <text> :: Mention @CFMB to trigger the CFMB LLM; alternatively reply to a message from CFMB to trigger
     """
     )
