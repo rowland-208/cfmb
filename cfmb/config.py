@@ -14,6 +14,7 @@ class Config(BaseSettings):
     DISCORD_MAX_MESSAGE_LENGTH: int
     ADMIN1_USER_ID: int
     ADMIN2_USER_ID: int
+    ADMIN3_USER_ID: int = 0
     OLLAMA_IMAGE_MODEL: Optional[str] = None
     OLLAMA_EMBEDDING_MODEL: Optional[str] = None
     NEWSLETTER_CHANNEL_ID: int

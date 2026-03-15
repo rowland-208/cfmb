@@ -376,7 +376,7 @@ async def handle_set_system_command(message, server_id):
 
 async def handle_exec_command(message):
     """Execute command on the host shell"""
-    if message.author.id == config.ADMIN2_USER_ID:
+    if message.author.id in (config.ADMIN2_USER_ID, config.ADMIN3_USER_ID):
         command = message.content.replace("/exec", "").strip()
         try:
             output = subprocess.check_output(command, shell=True).decode("utf-8")
