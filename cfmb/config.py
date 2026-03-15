@@ -32,8 +32,7 @@ class Config(BaseSettings):
     LLM_MIN_P: float
     LLM_PRESENCE_PENALTY: float
     LLM_REPEAT_PENALTY: float
-    OTHER_VALID_MODELS: str = ""
-    THINK_ENABLED: bool = True
+    FAST_MODEL: str = ""
 
 
 config = Config()

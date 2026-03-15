@@ -58,7 +58,7 @@ intents.message_content = True
 
 client = discord.Client(intents=intents)
 db_manager = DatabaseManager(config.DB_NAME)
-llm_client = LLMClient(config.OLLAMA_MODEL, think=config.THINK_ENABLED)
+llm_client = LLMClient(config.OLLAMA_MODEL)
 llm_queue = asyncio.Queue()
 llm_worker_task = None
 emoji_queue = asyncio.Queue()
@@ -692,37 +692,30 @@ async def handle_cfmb_restart_command(message):
 
 
 async def handle_cfmb_set_command(message):
-    """Handles /cfmb-set <key> <value> — update runtime settings."""
-    parts = message.content.split(None, 2)
-    if len(parts) < 3:
-        await message.channel.send("Usage: `/cfmb-set <key> <value>`\nKeys: `model`, `think`")
+    """Handles /cfmb-set <fast|slow> — switch between fast and slow mode."""
+    parts = message.content.split()
+    if len(parts) < 2:
+        mode = "fast" if not llm_client.think else "slow"
+        await message.channel.send(f"Current mode: **{mode}** (`{llm_client.model_name}`)\nUsage: `/cfmb-set fast` or `/cfmb-set slow`")
         return
 
-    key = parts[1].lower()
-    value = parts[2].strip()
+    mode = parts[1].lower()
 
-    if key == "model":
-        valid_models = [config.OLLAMA_MODEL]
-        if config.OTHER_VALID_MODELS:
-            valid_models += [m.strip() for m in config.OTHER_VALID_MODELS.split(",") if m.strip()]
-        if value not in valid_models:
-            await message.channel.send(f"Invalid model. Valid models: {', '.join(valid_models)}")
+    if mode == "fast":
+        if not config.FAST_MODEL:
+            await message.channel.send("No fast model configured. Set `FAST_MODEL` in config.")
             return
-        llm_client.model_name = value
-        await message.channel.send(f"Model set to `{value}`")
+        llm_client.model_name = config.FAST_MODEL
+        llm_client.think = False
+        await message.channel.send(f"Switched to **fast** mode (`{config.FAST_MODEL}`, thinking off)")
 
-    elif key == "think":
-        if value.lower() in ("true", "on", "1"):
-            llm_client.think = True
-            await message.channel.send("Thinking mode enabled")
-        elif value.lower() in ("false", "off", "0"):
-            llm_client.think = False
-            await message.channel.send("Thinking mode disabled")
-        else:
-            await message.channel.send("Usage: `/cfmb-set think <true|false>`")
+    elif mode == "slow":
+        llm_client.model_name = config.OLLAMA_MODEL
+        llm_client.think = True
+        await message.channel.send(f"Switched to **slow** mode (`{config.OLLAMA_MODEL}`, thinking on)")
 
     else:
-        await message.channel.send(f"Unknown key `{key}`. Valid keys: `model`, `think`")
+        await message.channel.send("Usage: `/cfmb-set fast` or `/cfmb-set slow`")
 
 
 async def handle_help_command(message):
@@ -737,7 +730,7 @@ async def handle_help_command(message):
 /profile :: Show your saved user profile
 /profile_gen :: Generate a new user profile
 /debug <text> :: Call LLM with debug output enabled
-/cfmb-set <key> <value> :: Set runtime config (model, think)
+/cfmb-set <fast|slow> :: Switch between fast and slow mode
 /cfmb-restart :: Restart the bot
 @CFMB <text> :: Mention @CFMB to trigger the CFMB LLM; alternatively reply to a message from CFMB to trigger
     """
