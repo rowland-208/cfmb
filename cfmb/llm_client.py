@@ -22,8 +22,9 @@ def _llm_options():
 
 
 class LLMClient:
-    def __init__(self, model_name):
+    def __init__(self, model_name, think=True):
         self.model_name = model_name
+        self.think = think
         self.async_client = ollama.AsyncClient()
 
     async def generate_image(self, prompt: str, image_model: str) -> bytes | None:
@@ -148,7 +149,7 @@ class LLMClient:
                 model=self.model_name,
                 messages=messages,
                 stream=True,
-                think=True,
+                think=self.think,
                 options=_llm_options(),
             )
             if tools:
