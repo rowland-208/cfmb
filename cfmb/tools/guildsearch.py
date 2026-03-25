@@ -14,7 +14,7 @@ def _resolve_mentions(text, id_to_name):
 
 class GuildSearchTool(Tool):
     name = "guildsearch"
-    description = "Search CFMG discord server messages from the past week."
+    description = "Search CFMG discord server messages from the past month."
     parameters = {
         "type": "object",
         "required": ["query"],
@@ -40,7 +40,7 @@ class GuildSearchTool(Tool):
         if not embedding:
             return "Failed to generate embedding for search query."
         excluded = set(config.DEV_EXCLUDED_CHANNELS.split(",")) if config.DEV_EXCLUDED_CHANNELS else None
-        chunks = db_manager.search_rag_chunks(server_id, embedding, limit=3, hours=168, exclude_channels=excluded)
+        chunks = db_manager.search_rag_chunks(server_id, embedding, limit=3, hours=720, exclude_channels=excluded)
         if not chunks:
             return "No matching conversations found."
         results = []
