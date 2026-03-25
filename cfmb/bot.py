@@ -267,7 +267,7 @@ async def on_message(message):
     if "NVDA" in message.content:
         await message.add_reaction("👀")
 
-    await emoji_queue.put(message)
+    # await emoji_queue.put(message)  # temporarily disabled for debugging
 
     if message.content.startswith("/bugs"):
         await handle_bugs_command(message)
