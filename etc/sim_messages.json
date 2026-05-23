@@ -1,0 +1,32 @@
+[
+  {
+    "server_id": "1018252155007815702",
+    "channel_id": "1109847269915770910",
+    "channel": "general",
+    "user_id": "111111111",
+    "username": "test-alice",
+    "message_id": "sim-000001",
+    "content": "@CFMB what's been going on around here this week?",
+    "is_mention": true
+  },
+  {
+    "server_id": "1018252155007815702",
+    "channel_id": "1095536639612305468",
+    "channel": "ai-stuff",
+    "user_id": "222222222",
+    "username": "test-bob",
+    "message_id": "sim-000002",
+    "content": "@CFMB anyone been talking about local LLMs lately?",
+    "is_mention": true
+  },
+  {
+    "server_id": "1018252155007815702",
+    "channel_id": "1018252155649527904",
+    "channel": "chit-chat",
+    "user_id": "333333333",
+    "username": "test-carol",
+    "message_id": "sim-000003",
+    "content": "no but really, what about the joke?",
+    "reply_to_message_id": "1504512592557641881"
+  }
+]
