@@ -64,7 +64,7 @@ def _iter_ld_items(data):
 def _format_meetup_events(events: list[dict], event_count: int) -> str:
     if not events:
         return ""
-    lines = ["## Upcoming events"]
+    lines: list[str] = []
     for ev in events[:event_count]:
         name = ev.get("name", "Untitled event")
         start = ev.get("startDate", "")

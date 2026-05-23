@@ -53,7 +53,7 @@ def test_format_meetup_events_renders_markdown():
     assert "2026-06-01T18:00:00-04:00" in out
     assert "CFMG" in out
     assert "https://meetup.com/e/1" in out
-    assert out.startswith("## Upcoming events")
+    assert out.startswith("- **Open Make Night**")
 
 
 def test_format_meetup_events_truncates_to_count():
