@@ -1,5 +1,7 @@
 import json
 import sys
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import requests
 import urllib3
@@ -7,6 +9,7 @@ from bs4 import BeautifulSoup
 
 
 _DEFAULT_TIMEOUT = 15
+_ET = ZoneInfo("America/New_York")
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -23,19 +26,26 @@ def fetch_meetup_markdown(meetup_url: str, event_count: int) -> str:
     return _format_meetup_events(events, event_count)
 
 
-def fetch_handbook_markdown(handbook_url: str, token_budget: int) -> str:
-    """Returns markdown of the handbook page truncated to token_budget. Empty on failure.
+def fetch_handbook_markdown(handbook_urls: list[str], token_budget: int) -> str:
+    """Fetches each URL, concatenates with H3 page-title headings, truncates to budget.
 
     verify=False because the guild wiki cert is self-managed and currently expired.
-    The wiki is a trusted internal source so we accept the tradeoff.
+    The wiki is trusted internal content, so we accept the tradeoff.
     """
-    try:
-        resp = requests.get(handbook_url, timeout=_DEFAULT_TIMEOUT, verify=False)
-        resp.raise_for_status()
-    except requests.RequestException as e:
-        print(f"handbook fetch error: {e}", file=sys.stderr)
-        return ""
-    markdown = _html_to_markdown(resp.text)
+    sections: list[str] = []
+    for url in handbook_urls:
+        try:
+            resp = requests.get(url, timeout=_DEFAULT_TIMEOUT, verify=False)
+            resp.raise_for_status()
+        except requests.RequestException as e:
+            print(f"handbook fetch error ({url}): {e}", file=sys.stderr)
+            continue
+        title = _extract_title(resp.text) or url
+        body = _html_to_markdown(resp.text)
+        if not body:
+            continue
+        sections.append(f"### {title}\n{body}")
+    markdown = "\n\n".join(sections)
     char_budget = token_budget * 4
     if len(markdown) > char_budget:
         markdown = markdown[:char_budget].rstrip() + "..."
@@ -74,15 +84,15 @@ def _format_meetup_events(events: list[dict], event_count: int) -> str:
     lines: list[str] = []
     for ev in events[:event_count]:
         name = ev.get("name", "Untitled event")
-        start = ev.get("startDate", "")
+        when = _format_event_date(ev.get("startDate", ""))
         url = ev.get("url", "")
         loc = ev.get("location") or {}
         if isinstance(loc, list):
             loc = loc[0] if loc else {}
         loc_name = loc.get("name") if isinstance(loc, dict) else ""
         parts = [f"- **{name}**"]
-        if start:
-            parts.append(start)
+        if when:
+            parts.append(when)
         if loc_name:
             parts.append(loc_name)
         if url:
@@ -91,8 +101,34 @@ def _format_meetup_events(events: list[dict], event_count: int) -> str:
     return "\n".join(lines)
 
 
+def _format_event_date(iso_dt: str) -> str:
+    """Converts an ISO datetime string to 'Mon Jun 09, 7:00 PM ET'.
+
+    Falls back to the raw string when parsing fails so we never silently drop info.
+    """
+    if not iso_dt:
+        return ""
+    raw = iso_dt.replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError:
+        return iso_dt
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_ET)
+    dt = dt.astimezone(_ET)
+    return dt.strftime("%a %b %d, %-I:%M %p ET")
+
+
+def _extract_title(html: str) -> str:
+    """Pulls the page title from <title>, stripping ' | Site Name' suffix."""
+    soup = BeautifulSoup(html, "html.parser")
+    if soup.title and soup.title.string:
+        return soup.title.string.split("|", 1)[0].strip()
+    return ""
+
+
 def _html_to_markdown(html: str) -> str:
-    """BS4-based HTML → text. Strips script/style/nav/header/footer/aside chrome.
+    """BS4-based HTML → text. Strips chrome and pilcrow anchor markers.
 
     Also extracts text from <template> elements (wiki.js renders page content
     into server-side <template slot="contents"> blocks that body.get_text skips
@@ -105,5 +141,5 @@ def _html_to_markdown(html: str) -> str:
     parts = [body.get_text(separator="\n")]
     for template in soup.find_all("template"):
         parts.append(template.get_text(separator="\n"))
-    text = "\n".join(parts)
+    text = "\n".join(parts).replace("¶", "")
     return "\n".join(line.strip() for line in text.splitlines() if line.strip())

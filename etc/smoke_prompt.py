@@ -37,7 +37,14 @@ TMP_DB = Path("/tmp/cfmb_smoke.sqlite")
 BASE_PROMPT_PATH = REPO_ROOT / "etc" / "base_system.md"
 
 DEFAULT_MEETUP_URL = "https://www.meetup.com/cfmakers/"
-DEFAULT_HANDBOOK_URL = "https://wiki.capefearmakersguild.org/"
+DEFAULT_HANDBOOK_URLS = [
+    "https://wiki.capefearmakersguild.org/makerspace-rules",
+    "https://wiki.capefearmakersguild.org/personnel",
+    "https://wiki.capefearmakersguild.org/en/machines/bambu-3d-printers",
+    "https://wiki.capefearmakersguild.org/en/machines/carvera-cnc",
+    "https://wiki.capefearmakersguild.org/en/machines/omtech-co2-laser",
+    "https://wiki.capefearmakersguild.org/en/machines/omtech-fiber-laser",
+]
 
 
 def migrate_old_to_new(prod_db_path: Path, tmp_db_path: Path, bot_user_id: str) -> None:
@@ -123,7 +130,7 @@ def process_sim(
     handbook_budget: int,
     meetup_count: int,
     meetup_url: str,
-    handbook_url: str,
+    handbook_urls: list[str],
     bot_user_id: str,
     no_web: bool,
     with_llm: bool,
@@ -155,7 +162,7 @@ def process_sim(
         handbook_md = ""
     else:
         meetup_md = fetch_meetup_markdown(meetup_url, meetup_count)
-        handbook_md = fetch_handbook_markdown(handbook_url, handbook_budget)
+        handbook_md = fetch_handbook_markdown(handbook_urls, handbook_budget)
 
     discord_md = render_discord_content(discord_rows)
     system_prompt = build_system_prompt(
@@ -203,7 +210,8 @@ def main() -> None:
     parser.add_argument("--bot-user-id", default="999999999",
                         help="Discord user id of the bot (for role mapping and migration).")
     parser.add_argument("--meetup-url", default=DEFAULT_MEETUP_URL)
-    parser.add_argument("--handbook-url", default=DEFAULT_HANDBOOK_URL)
+    parser.add_argument("--handbook-urls", default=",".join(DEFAULT_HANDBOOK_URLS),
+                        help="Comma-separated wiki URLs to fetch and concatenate.")
     parser.add_argument("--discord-budget", type=int, default=6000)
     parser.add_argument("--chain-budget", type=int, default=2000)
     parser.add_argument("--handbook-budget", type=int, default=4000)
@@ -223,6 +231,7 @@ def main() -> None:
     if not sim_file.exists():
         sys.exit(f"sim file not found: {sim_file}")
     sims = json.loads(sim_file.read_text())
+    handbook_urls = [u.strip() for u in args.handbook_urls.split(",") if u.strip()]
 
     for sim in sims:
         process_sim(
@@ -233,7 +242,7 @@ def main() -> None:
             handbook_budget=args.handbook_budget,
             meetup_count=args.meetup_count,
             meetup_url=args.meetup_url,
-            handbook_url=args.handbook_url,
+            handbook_urls=handbook_urls,
             bot_user_id=args.bot_user_id,
             no_web=args.no_web,
             with_llm=args.with_llm,
