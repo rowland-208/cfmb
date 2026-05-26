@@ -2,10 +2,13 @@ import json
 import sys
 
 import requests
+import urllib3
 from bs4 import BeautifulSoup
 
 
 _DEFAULT_TIMEOUT = 15
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 def fetch_meetup_markdown(meetup_url: str, event_count: int) -> str:
@@ -21,9 +24,13 @@ def fetch_meetup_markdown(meetup_url: str, event_count: int) -> str:
 
 
 def fetch_handbook_markdown(handbook_url: str, token_budget: int) -> str:
-    """Returns markdown of the handbook page truncated to token_budget. Empty on failure."""
+    """Returns markdown of the handbook page truncated to token_budget. Empty on failure.
+
+    verify=False because the guild wiki cert is self-managed and currently expired.
+    The wiki is a trusted internal source so we accept the tradeoff.
+    """
     try:
-        resp = requests.get(handbook_url, timeout=_DEFAULT_TIMEOUT)
+        resp = requests.get(handbook_url, timeout=_DEFAULT_TIMEOUT, verify=False)
         resp.raise_for_status()
     except requests.RequestException as e:
         print(f"handbook fetch error: {e}", file=sys.stderr)
@@ -85,10 +92,18 @@ def _format_meetup_events(events: list[dict], event_count: int) -> str:
 
 
 def _html_to_markdown(html: str) -> str:
-    """BS4-based HTML → text. Strips script/style/nav/header/footer/aside chrome."""
+    """BS4-based HTML → text. Strips script/style/nav/header/footer/aside chrome.
+
+    Also extracts text from <template> elements (wiki.js renders page content
+    into server-side <template slot="contents"> blocks that body.get_text skips
+    by default).
+    """
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "nav", "header", "footer", "aside", "noscript"]):
         tag.decompose()
     body = soup.body or soup
-    text = body.get_text(separator="\n")
+    parts = [body.get_text(separator="\n")]
+    for template in soup.find_all("template"):
+        parts.append(template.get_text(separator="\n"))
+    text = "\n".join(parts)
     return "\n".join(line.strip() for line in text.splitlines() if line.strip())
