@@ -100,13 +100,6 @@ def test_format_meetup_events_truncates_to_count():
     assert "Event 3" not in out
 
 
-def test_format_meetup_events_zero_count_returns_all():
-    events = [{"title": f"Event {i}"} for i in range(10)]
-    out = _format_meetup_events(events, 0)
-    assert "Event 0" in out
-    assert "Event 9" in out
-
-
 def test_format_meetup_events_empty_returns_empty():
     assert _format_meetup_events([], 5) == ""
 
@@ -215,14 +208,3 @@ def test_fetch_handbook_truncates_to_budget(mocker):
     out = fetch_handbook_markdown(["http://x/"], token_budget=10)
     assert len(out) <= 10 * 4 + 5
     assert out.endswith("...")
-
-
-def test_fetch_handbook_zero_budget_no_truncation(mocker):
-    long_body = "paragraph of text. " * 1000
-    long_html = f"<html><head><title>Big | Site</title></head><body>{long_body}</body></html>"
-    response = mocker.Mock(text=long_html)
-    response.raise_for_status = mocker.Mock()
-    mocker.patch("cfmb.web_context.requests.get", return_value=response)
-    out = fetch_handbook_markdown(["http://x/"], token_budget=0)
-    assert not out.endswith("...")
-    assert len(out) > 10 * 4 + 5

@@ -50,15 +50,3 @@ def test_cap_rows_custom_content_key():
 def test_per_row_overhead_constant_is_documented():
     # Guards against silent changes.
     assert PER_ROW_OVERHEAD == 8
-
-
-def test_cap_rows_zero_budget_returns_all():
-    rows = [{"content": "x" * 1000} for _ in range(5)]
-    out = cap_rows(rows, budget_tokens=0)
-    assert out == rows
-
-
-def test_cap_rows_negative_budget_returns_all():
-    rows = [{"content": "x" * 1000} for _ in range(5)]
-    out = cap_rows(rows, budget_tokens=-1)
-    assert out == rows

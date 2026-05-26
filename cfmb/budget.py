@@ -11,10 +11,7 @@ def cap_rows(rows: list[dict], budget_tokens: int, content_key: str = "content")
 
     When callers pass rows newest-first, this keeps the newest and drops the oldest
     once the budget is exhausted. Returns the kept rows in the same input order.
-    `budget_tokens <= 0` means no cap — return every row.
     """
-    if budget_tokens <= 0:
-        return list(rows)
     kept: list[dict] = []
     used = 0
     for row in rows:

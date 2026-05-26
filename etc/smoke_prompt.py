@@ -213,14 +213,10 @@ def main() -> None:
     parser.add_argument("--meetup-url", default=DEFAULT_MEETUP_URL)
     parser.add_argument("--handbook-urls", default=",".join(DEFAULT_HANDBOOK_URLS),
                         help="Comma-separated wiki URLs to fetch and concatenate.")
-    parser.add_argument("--discord-budget", type=int, default=0,
-                        help="Token cap for the recent-discord section; 0 = no cap (default).")
-    parser.add_argument("--chain-budget", type=int, default=0,
-                        help="Token cap for the chain turns; 0 = no cap (default).")
-    parser.add_argument("--handbook-budget", type=int, default=0,
-                        help="Token cap for the handbook section; 0 = no cap (default).")
-    parser.add_argument("--meetup-count", type=int, default=0,
-                        help="Cap on upcoming events to render; 0 = no cap (default).")
+    parser.add_argument("--discord-budget", type=int, default=100000)
+    parser.add_argument("--chain-budget", type=int, default=10000)
+    parser.add_argument("--handbook-budget", type=int, default=100000)
+    parser.add_argument("--meetup-count", type=int, default=100)
     args = parser.parse_args()
 
     if not PROD_DB.exists():
