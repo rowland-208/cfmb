@@ -33,6 +33,7 @@ class Config(BaseSettings):
     LLM_MIN_P: float
     LLM_PRESENCE_PENALTY: float
     LLM_REPEAT_PENALTY: float
+    LLM_NUM_CTX: int = 131072
     OLLAMA_FAST_MODEL: str = ""
     LLM_TIMEOUT_SECONDS: int = 300
     LLM_TIMEOUT_MESSAGE: str = "Comrade, our computational resources have been temporarily diverted to the greater good. Please try again later. 🐻"

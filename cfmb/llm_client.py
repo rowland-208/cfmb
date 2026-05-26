@@ -1,6 +1,5 @@
 import asyncio
 import base64
-import re
 import sys
 import time
 import traceback
@@ -19,13 +18,13 @@ def _llm_options():
         "min_p": _config.LLM_MIN_P,
         "presence_penalty": _config.LLM_PRESENCE_PENALTY,
         "repeat_penalty": _config.LLM_REPEAT_PENALTY,
+        "num_ctx": _config.LLM_NUM_CTX,
     }
 
 
 class LLMClient:
-    def __init__(self, model_name, think=True):
+    def __init__(self, model_name):
         self.model_name = model_name
-        self.think = think
         self.async_client = ollama.AsyncClient()
 
     async def generate_image(self, prompt: str, image_model: str) -> bytes | None:
@@ -99,7 +98,6 @@ class LLMClient:
             chat_kwargs = dict(
                 model=self.model_name,
                 messages=messages,
-                think=self.think,
                 options=_llm_options(),
             )
             if tools:
@@ -110,10 +108,7 @@ class LLMClient:
                 msg = response["message"]
 
                 if not tools or not msg.get("tool_calls"):
-                    content = msg["content"]
-                    # Strip leaked <think> tags that some models include in content
-                    content = re.sub(r"<think>[\s\S]*?</think>\s*", "", content)
-                    return content
+                    return msg["content"]
 
                 messages.append(msg)
                 for tc in msg["tool_calls"]:
@@ -131,19 +126,16 @@ class LLMClient:
             traceback.print_exc(file=sys.stderr)
             return None
 
-    async def get_completion_streaming(self, messages, on_thinking=None, on_content=None,
+    async def get_completion_streaming(self, messages, on_content=None,
                                        tools=None, tool_handler=None, on_tool_call=None):
-        """Streams a chat completion with thinking enabled.
+        """Streams a chat completion.
 
-        Calls on_thinking(thinking_so_far) periodically during the thinking phase,
-        and on_content(content_so_far) periodically during the content phase.
+        Calls on_content(content_so_far) periodically as content streams in.
         If tools/tool_handler are provided, loops on tool calls until final response.
-        on_tool_call(name, args, result) is called after each tool execution for debug output.
-        Returns (thinking_text, content_text) when done.
+        on_tool_call(name, args, result) is called after each tool execution.
+        Returns content_text when done.
         """
-        thinking_text = ""
         content_text = ""
-        thinking_tokens = 0
         content_tokens = 0
 
         try:
@@ -154,7 +146,6 @@ class LLMClient:
                 model=self.model_name,
                 messages=messages,
                 stream=True,
-                think=self.think,
                 options=_llm_options(),
             )
             if tools:
@@ -165,7 +156,6 @@ class LLMClient:
                 round_num += 1
                 round_start = time.monotonic()
                 tool_calls = []
-                round_thinking = 0
                 round_content = 0
                 print(f"Round {round_num}: starting chat request ({len(messages)} messages)")
                 stream = await self.async_client.chat(**chat_kwargs)
@@ -174,12 +164,6 @@ class LLMClient:
                         t_first_token = time.monotonic()
                         print(f"Streaming: first token in {t_first_token - t_start:.2f}s")
                     msg = chunk.get("message", {})
-                    if msg.get("thinking"):
-                        thinking_text += msg["thinking"]
-                        thinking_tokens += 1
-                        round_thinking += 1
-                        if on_thinking:
-                            await on_thinking(thinking_text)
                     if msg.get("content"):
                         content_text += msg["content"]
                         content_tokens += 1
@@ -190,24 +174,17 @@ class LLMClient:
                         tool_calls.extend(msg["tool_calls"])
                 round_elapsed = time.monotonic() - round_start
                 print(f"Round {round_num} done in {round_elapsed:.2f}s: "
-                      f"thinking_tokens={round_thinking}, content_tokens={round_content}, "
-                      f"tool_calls={len(tool_calls)}, "
-                      f"thinking_chars={len(thinking_text)}, content_chars={len(content_text)}")
+                      f"content_tokens={round_content}, tool_calls={len(tool_calls)}, "
+                      f"content_chars={len(content_text)}")
 
                 if not tools or not tool_calls:
                     break
 
-                # Append assistant message with tool calls, execute tools, and loop
-                # Include content and thinking so Ollama's template properly
-                # closes </think> tags and renders the tool call correctly.
-                assistant_msg = {
+                messages.append({
                     "role": "assistant",
                     "content": content_text or "",
                     "tool_calls": tool_calls,
-                }
-                if thinking_text:
-                    assistant_msg["thinking"] = thinking_text
-                messages.append(assistant_msg)
+                })
                 for tc in tool_calls:
                     name = tc["function"]["name"]
                     args = tc["function"]["arguments"]
@@ -219,21 +196,18 @@ class LLMClient:
                         "role": "tool",
                         "content": str(result),
                     })
-                # Reset for next round
-                thinking_text = ""
                 content_text = ""
-                thinking_tokens = 0
                 content_tokens = 0
 
             t_end = time.monotonic()
-            total_tokens = thinking_tokens + content_tokens
-            print(f"Streaming: last token in {t_end - t_start:.2f}s ({total_tokens} tokens, {total_tokens / (t_end - t_start):.1f} tok/s)")
+            print(f"Streaming: last token in {t_end - t_start:.2f}s "
+                  f"({content_tokens} tokens, {content_tokens / (t_end - t_start):.1f} tok/s)")
 
-            return thinking_text, content_text
+            return content_text
         except Exception as e:
             print(f"LLM streaming error: {e}", file=sys.stderr, flush=True)
             traceback.print_exc(file=sys.stderr)
-            return None, None
+            return None
 
     async def get_embedding(self, text: str, embedding_model: str) -> list[float] | None:
         """Returns a vector embedding for the given text using the specified Ollama model."""
