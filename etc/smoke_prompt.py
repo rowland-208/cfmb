@@ -36,7 +36,7 @@ PROD_DB = REPO_ROOT / "cfmb_db.sqlite"
 TMP_DB = Path("/tmp/cfmb_smoke.sqlite")
 BASE_PROMPT_PATH = REPO_ROOT / "etc" / "base_system.md"
 
-DEFAULT_MEETUP_URL = "https://www.meetup.com/cfmakers/"
+DEFAULT_MEETUP_URL = "https://www.meetup.com/cfmakers/events/?type=upcoming"
 DEFAULT_HANDBOOK_URLS = [
     "https://wiki.capefearmakersguild.org/makerspace-rules",
     "https://wiki.capefearmakersguild.org/personnel",

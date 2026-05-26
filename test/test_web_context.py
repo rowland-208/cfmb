@@ -12,13 +12,16 @@ from cfmb.web_context import (
 
 MEETUP_HTML = """
 <html><head>
-<script type="application/ld+json">
-[
-  {"@type": "Event", "name": "Open Make Night", "startDate": "2026-06-01T22:00:00.000Z",
-   "url": "https://meetup.com/event/1", "location": {"name": "CFMG"}},
-  {"@type": "Event", "name": "Laser Class", "startDate": "2026-06-08T22:00:00.000Z",
-   "url": "https://meetup.com/event/2", "location": {"name": "CFMG"}}
-]
+<script id="__NEXT_DATA__" type="application/json">
+{"props": {"pageProps": {
+  "events": [
+    {"title": "Open Make Night", "dateTime": "2026-06-01T18:00:00-04:00",
+     "eventUrl": "https://meetup.com/event/1", "venue": {"__ref": "Venue:1"}},
+    {"title": "Laser Class", "dateTime": "2026-06-08T18:00:00-04:00",
+     "eventUrl": "https://meetup.com/event/2", "venue": {"__ref": "Venue:1"}}
+  ],
+  "cache": {"Venue:1": {"__typename": "Venue", "id": "1", "name": "CFMG"}}
+}}}
 </script>
 </head><body><p>Events</p></body></html>
 """
@@ -76,20 +79,21 @@ def test_format_event_date_empty_returns_empty():
 
 def test_format_meetup_events_uses_et_dates():
     events = [
-        {"@type": "Event", "name": "Open Make Night",
-         "startDate": "2026-06-01T22:00:00.000Z",
-         "url": "https://meetup.com/e/1", "location": {"name": "CFMG"}},
+        {"title": "Open Make Night",
+         "dateTime": "2026-06-01T18:00:00-04:00",
+         "eventUrl": "https://meetup.com/e/1",
+         "venue": {"name": "CFMG"}},
     ]
     out = _format_meetup_events(events, 5)
     assert "Open Make Night" in out
     assert "Mon Jun 01, 6:00 PM ET" in out
-    assert "2026-06-01T22:00:00.000Z" not in out
+    assert "2026-06-01T18:00:00-04:00" not in out
     assert "CFMG" in out
     assert "https://meetup.com/e/1" in out
 
 
 def test_format_meetup_events_truncates_to_count():
-    events = [{"@type": "Event", "name": f"Event {i}"} for i in range(10)]
+    events = [{"title": f"Event {i}"} for i in range(10)]
     out = _format_meetup_events(events, 3)
     assert "Event 0" in out
     assert "Event 2" in out
@@ -100,12 +104,11 @@ def test_format_meetup_events_empty_returns_empty():
     assert _format_meetup_events([], 5) == ""
 
 
-def test_format_meetup_events_handles_list_location():
-    events = [{"@type": "Event", "name": "Multi-loc",
-               "location": [{"name": "First Place"}, {"name": "Second Place"}]}]
+def test_format_meetup_events_handles_missing_venue():
+    events = [{"title": "No venue", "dateTime": "2026-06-01T18:00:00-04:00"}]
     out = _format_meetup_events(events, 5)
-    assert "First Place" in out
-    assert "Second Place" not in out
+    assert "No venue" in out
+    assert "Mon Jun 01" in out
 
 
 def test_html_to_markdown_strips_chrome():
@@ -157,6 +160,8 @@ def test_fetch_meetup_parses_real_html(mocker):
     out = fetch_meetup_markdown("http://x", 5)
     assert "Open Make Night" in out
     assert "Laser Class" in out
+    # Venue ref was resolved to the normalized cache entry.
+    assert "CFMG" in out
 
 
 def test_fetch_handbook_empty_list_returns_empty():

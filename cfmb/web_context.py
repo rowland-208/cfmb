@@ -53,29 +53,75 @@ def fetch_handbook_markdown(handbook_urls: list[str], token_budget: int) -> str:
 
 
 def _extract_events_from_html(html: str) -> list[dict]:
-    """Parses JSON-LD Event entries from a Meetup-style page."""
+    """Parses upcoming events from Meetup's __NEXT_DATA__ blob.
+
+    Meetup's group home page only embeds ~4 events as JSON-LD; the dedicated
+    /events/?type=upcoming page embeds all upcoming ones in __NEXT_DATA__.
+    Each event has keys like 'title', 'dateTime', 'eventUrl', 'venue'. Venue
+    fields are GraphQL refs (e.g. {'__ref': 'Venue:123'}) which we resolve
+    against the normalized cache at extraction time.
+    """
     soup = BeautifulSoup(html, "html.parser")
-    events: list[dict] = []
-    for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
-        try:
-            data = json.loads(script.string or "")
-        except (json.JSONDecodeError, TypeError):
+    nxt = soup.find("script", id="__NEXT_DATA__")
+    if not nxt or not nxt.string:
+        return []
+    try:
+        data = json.loads(nxt.string)
+    except json.JSONDecodeError:
+        return []
+    refs = _collect_refs(data)
+    seen: set[tuple] = set()
+    out: list[dict] = []
+    for ev in _walk_event_shaped(data):
+        key = (ev.get("title"), ev.get("dateTime"))
+        if key in seen:
             continue
-        for item in _iter_ld_items(data):
-            if isinstance(item, dict) and item.get("@type") == "Event":
-                events.append(item)
-    return events
+        seen.add(key)
+        out.append(_resolve_refs(ev, refs))
+    return out
 
 
-def _iter_ld_items(data):
-    if isinstance(data, list):
-        for item in data:
-            yield from _iter_ld_items(item)
-    elif isinstance(data, dict):
-        if "@graph" in data:
-            yield from _iter_ld_items(data["@graph"])
+def _walk_event_shaped(obj):
+    """Recursively yields dicts that look like Meetup events."""
+    if isinstance(obj, dict):
+        if {"title", "dateTime"}.issubset(obj.keys()):
+            yield obj
+        for v in obj.values():
+            yield from _walk_event_shaped(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _walk_event_shaped(v)
+
+
+def _collect_refs(obj) -> dict:
+    """Builds a map of normalized cache entries keyed by their cache id.
+
+    Meetup's __NEXT_DATA__ stores entries like `"Venue:27532711": {...}` at
+    various depths in the tree. We collect everything that's a dict-valued
+    string key, since the cache id pattern is `Type:id`.
+    """
+    out: dict = {}
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if isinstance(k, str) and ":" in k and isinstance(v, dict) and "__typename" in v:
+                out[k] = v
+            out.update(_collect_refs(v))
+    elif isinstance(obj, list):
+        for v in obj:
+            out.update(_collect_refs(v))
+    return out
+
+
+def _resolve_refs(ev: dict, refs: dict) -> dict:
+    """Replaces shallow {'__ref': '...'} pointers in an event dict with the
+    actual cache entry. One level deep is enough for our formatter's needs."""
+    out: dict = {}
+    for k, v in ev.items():
+        if isinstance(v, dict) and "__ref" in v and v["__ref"] in refs:
+            out[k] = refs[v["__ref"]]
         else:
-            yield data
+            out[k] = v
+    return out
 
 
 def _format_meetup_events(events: list[dict], event_count: int) -> str:
@@ -83,18 +129,16 @@ def _format_meetup_events(events: list[dict], event_count: int) -> str:
         return ""
     lines: list[str] = []
     for ev in events[:event_count]:
-        name = ev.get("name", "Untitled event")
-        when = _format_event_date(ev.get("startDate", ""))
-        url = ev.get("url", "")
-        loc = ev.get("location") or {}
-        if isinstance(loc, list):
-            loc = loc[0] if loc else {}
-        loc_name = loc.get("name") if isinstance(loc, dict) else ""
+        name = ev.get("title", "Untitled event")
+        when = _format_event_date(ev.get("dateTime", ""))
+        url = ev.get("eventUrl", "")
+        venue = ev.get("venue") or {}
+        venue_name = venue.get("name") if isinstance(venue, dict) else ""
         parts = [f"- **{name}**"]
         if when:
             parts.append(when)
-        if loc_name:
-            parts.append(loc_name)
+        if venue_name:
+            parts.append(venue_name)
         if url:
             parts.append(url)
         lines.append(" — ".join(parts))
