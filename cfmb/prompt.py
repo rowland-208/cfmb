@@ -34,8 +34,9 @@ def render_discord_content(rows: list[dict]) -> str:
 def build_system_prompt(*, base: str, meetup: str, handbook: str, discord: str) -> str:
     """Concatenates base + (meetup, handbook, discord) with H2 section headings.
 
-    Empty sections are omitted entirely (no heading, no blank section).
-    Base is rendered as-is (it manages its own structure).
+    Sections are separated by a horizontal rule (`---`). Empty sections are
+    omitted entirely (no heading, no rule). Base is rendered as-is (it
+    manages its own structure).
     """
     parts = [base.rstrip()]
     if meetup.strip():
@@ -44,7 +45,7 @@ def build_system_prompt(*, base: str, meetup: str, handbook: str, discord: str) 
         parts.append("## Handbook\n" + handbook.rstrip())
     if discord.strip():
         parts.append("## Recent guild activity\n" + discord.rstrip())
-    return "\n\n".join(parts)
+    return "\n\n---\n\n".join(parts)
 
 
 def build_chain_messages(rows: list[dict], bot_user_id: str) -> list[dict]:

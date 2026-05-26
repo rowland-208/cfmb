@@ -65,12 +65,17 @@ def test_build_system_prompt_concatenates_sections():
         discord="### general\n**2026-05-23**\n- alice: hi",
     )
     expected = (
-        "Base prompt.\n\n"
-        "## Upcoming events\n- **Event 1**\n\n"
-        "## Handbook\nHandbook text.\n\n"
+        "Base prompt.\n\n---\n\n"
+        "## Upcoming events\n- **Event 1**\n\n---\n\n"
+        "## Handbook\nHandbook text.\n\n---\n\n"
         "## Recent guild activity\n### general\n**2026-05-23**\n- alice: hi"
     )
     assert out == expected
+
+
+def test_build_system_prompt_no_trailing_rule_when_only_base():
+    out = build_system_prompt(base="Base.", meetup="", handbook="", discord="")
+    assert "---" not in out
 
 
 def test_build_system_prompt_omits_empty_sections():
