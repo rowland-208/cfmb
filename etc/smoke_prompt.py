@@ -134,6 +134,7 @@ def process_sim(
     bot_user_id: str,
     no_web: bool,
     with_llm: bool,
+    now_iso: str | None,
 ) -> None:
     chain_id = db.write_message(
         server_id=sim["server_id"], message_id=sim["message_id"],
@@ -148,7 +149,7 @@ def process_sim(
     excluded = sim.get("excluded_channel_ids", [])
     discord_rows_newest_first = db.get_recent_discord_messages(
         server_id=sim["server_id"], current_chain_id=chain_id,
-        excluded_channel_ids=excluded, days=7,
+        excluded_channel_ids=excluded, days=7, now_iso=now_iso,
     )
     kept_newest_first = cap_rows(discord_rows_newest_first, discord_budget)
     discord_rows = list(reversed(kept_newest_first))
@@ -227,6 +228,14 @@ def main() -> None:
     db = DatabaseManager(str(TMP_DB))
     base_text = BASE_PROMPT_PATH.read_text()
 
+    # Anchor "now" to the most recent migrated row so the 7-day window doesn't
+    # clip out everything when the prod copy is older than today.
+    with sqlite3.connect(str(TMP_DB)) as conn:
+        row = conn.execute("SELECT MAX(timestamp) FROM messages").fetchone()
+    anchor_now_iso = row[0] if row and row[0] else None
+    if anchor_now_iso:
+        print(f"Anchoring discord-content window at {anchor_now_iso}", file=sys.stderr)
+
     sim_file = Path(args.sim_file)
     if not sim_file.exists():
         sys.exit(f"sim file not found: {sim_file}")
@@ -246,6 +255,7 @@ def main() -> None:
             bot_user_id=args.bot_user_id,
             no_web=args.no_web,
             with_llm=args.with_llm,
+            now_iso=anchor_now_iso,
         )
         print()
 

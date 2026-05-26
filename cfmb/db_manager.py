@@ -121,6 +121,7 @@ class DatabaseManager:
         current_chain_id: str | None,
         excluded_channel_ids: list[str],
         days: int = 7,
+        now_iso: str | None = None,
     ) -> list[dict]:
         """Returns candidate rows for the system-prompt discord section.
 
@@ -128,11 +129,15 @@ class DatabaseManager:
         FROM current_chain_id (so the current chain's rows are excluded but rows from
         other chains AND chain-less rows are kept), within the past `days` days.
         Ordered newest-first. Caller applies the token cap.
+
+        `now_iso` overrides the reference time the `days` window subtracts from.
+        Defaults to SQLite's "now". Useful for replaying against historical data.
         """
-        params: list = [server_id, f"-{int(days)} days"]
+        reference = now_iso if now_iso else "now"
+        params: list = [server_id, reference, f"-{int(days)} days"]
         clauses = [
             "server_id = ?",
-            "timestamp >= datetime('now', ?)",
+            "timestamp >= datetime(?, ?)",
         ]
         if current_chain_id is not None:
             clauses.append("(chain_id IS NULL OR chain_id != ?)")

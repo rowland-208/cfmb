@@ -186,6 +186,27 @@ def test_get_recent_discord_messages_filters_by_time(db):
     assert "ancient" not in contents
 
 
+def test_get_recent_discord_messages_now_iso_override(db):
+    """now_iso lets callers anchor the days window at a chosen reference time."""
+    with db._get_connection() as conn:
+        for mid, ts in [
+            ("a", "2024-06-01 12:00:00"),  # within 7d of override -> KEEP
+            ("b", "2024-06-05 12:00:00"),  # within 7d of override -> KEEP
+            ("c", "2024-05-20 12:00:00"),  # outside 7d of override -> DROP
+        ]:
+            conn.execute(
+                "INSERT INTO messages (server_id, message_id, chain_id, user_id, username, "
+                "channel_id, channel_name, content, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                ("s1", mid, None, "u1", "alice", "c1", "general", mid, ts),
+            )
+    rows = db.get_recent_discord_messages(
+        server_id="s1", current_chain_id=None, excluded_channel_ids=[],
+        days=7, now_iso="2024-06-06 00:00:00",
+    )
+    ids = sorted(r["message_id"] for r in rows)
+    assert ids == ["a", "b"]
+
+
 def test_get_recent_discord_messages_handles_null_current_chain(db):
     _write(db, message_id="m1", content="general chatter")
     _write(db, message_id="m2", content="bot conversation", is_mention=True)
