@@ -27,11 +27,12 @@ def fetch_meetup_markdown(meetup_url: str, event_count: int = 0) -> str:
     return _format_meetup_events(events, event_count)
 
 
-def fetch_handbook_markdown(handbook_urls: list[str], token_budget: int) -> str:
-    """Fetches each URL, concatenates with H3 page-title headings, truncates to budget.
+def fetch_handbook_markdown(handbook_urls: list[str], token_budget: int = 0) -> str:
+    """Fetches each URL, concatenates with italic page-title headings, truncates to budget.
 
     verify=False because the guild wiki cert is self-managed and currently expired.
     The wiki is trusted internal content, so we accept the tradeoff.
+    `token_budget <= 0` means no truncation.
     """
     sections: list[str] = []
     for url in handbook_urls:
@@ -47,9 +48,10 @@ def fetch_handbook_markdown(handbook_urls: list[str], token_budget: int) -> str:
             continue
         sections.append(f"*{title}*\n{body}")
     markdown = "\n\n".join(sections)
-    char_budget = token_budget * 4
-    if len(markdown) > char_budget:
-        markdown = markdown[:char_budget].rstrip() + "..."
+    if token_budget > 0:
+        char_budget = token_budget * 4
+        if len(markdown) > char_budget:
+            markdown = markdown[:char_budget].rstrip() + "..."
     return markdown
 
 
