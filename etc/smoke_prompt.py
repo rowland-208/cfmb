@@ -216,7 +216,7 @@ def main() -> None:
     parser.add_argument("--discord-budget", type=int, default=6000)
     parser.add_argument("--chain-budget", type=int, default=2000)
     parser.add_argument("--handbook-budget", type=int, default=4000)
-    parser.add_argument("--meetup-count", type=int, default=5)
+    parser.add_argument("--meetup-count", type=int, default=10)
     args = parser.parse_args()
 
     if not PROD_DB.exists():

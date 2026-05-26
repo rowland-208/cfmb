@@ -44,7 +44,7 @@ def fetch_handbook_markdown(handbook_urls: list[str], token_budget: int) -> str:
         body = _html_to_markdown(resp.text)
         if not body:
             continue
-        sections.append(f"### {title}\n{body}")
+        sections.append(f"*{title}*\n{body}")
     markdown = "\n\n".join(sections)
     char_budget = token_budget * 4
     if len(markdown) > char_budget:

@@ -188,9 +188,9 @@ def test_fetch_handbook_concatenates_multiple_pages(mocker):
     mocker.patch("cfmb.web_context.requests.get",
                  side_effect=[response_a, response_b])
     out = fetch_handbook_markdown(["http://a/", "http://b/"], 1000)
-    assert out.startswith("### A\n")
+    assert out.startswith("*A*\n")
     assert "alpha content" in out
-    assert "### B\n" in out
+    assert "*B*\n" in out
     assert "beta content" in out
 
 
