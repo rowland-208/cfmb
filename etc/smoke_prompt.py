@@ -216,7 +216,8 @@ def main() -> None:
     parser.add_argument("--discord-budget", type=int, default=6000)
     parser.add_argument("--chain-budget", type=int, default=2000)
     parser.add_argument("--handbook-budget", type=int, default=4000)
-    parser.add_argument("--meetup-count", type=int, default=10)
+    parser.add_argument("--meetup-count", type=int, default=0,
+                        help="Cap on upcoming events to render; 0 = no cap (default).")
     args = parser.parse_args()
 
     if not PROD_DB.exists():

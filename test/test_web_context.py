@@ -100,6 +100,13 @@ def test_format_meetup_events_truncates_to_count():
     assert "Event 3" not in out
 
 
+def test_format_meetup_events_zero_count_returns_all():
+    events = [{"title": f"Event {i}"} for i in range(10)]
+    out = _format_meetup_events(events, 0)
+    assert "Event 0" in out
+    assert "Event 9" in out
+
+
 def test_format_meetup_events_empty_returns_empty():
     assert _format_meetup_events([], 5) == ""
 

@@ -14,8 +14,9 @@ _ET = ZoneInfo("America/New_York")
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-def fetch_meetup_markdown(meetup_url: str, event_count: int) -> str:
-    """Returns markdown for up to event_count upcoming events. Empty on failure."""
+def fetch_meetup_markdown(meetup_url: str, event_count: int = 0) -> str:
+    """Returns markdown for upcoming events. `event_count=0` means no cap.
+    Empty on failure."""
     try:
         resp = requests.get(meetup_url, timeout=_DEFAULT_TIMEOUT)
         resp.raise_for_status()
@@ -127,8 +128,9 @@ def _resolve_refs(ev: dict, refs: dict) -> dict:
 def _format_meetup_events(events: list[dict], event_count: int) -> str:
     if not events:
         return ""
+    selected = events if event_count <= 0 else events[:event_count]
     lines: list[str] = []
-    for ev in events[:event_count]:
+    for ev in selected:
         name = ev.get("title", "Untitled event")
         when = _format_event_date(ev.get("dateTime", ""))
         url = ev.get("eventUrl", "")
