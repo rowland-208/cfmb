@@ -99,37 +99,39 @@ async def process_llm_request(message, chain_id):
     server_id = str(message.guild.id)
     excluded = [c.strip() for c in config.DEV_EXCLUDED_CHANNELS.split(",") if c.strip()]
 
-    discord_rows = db.get_recent_discord_messages(
-        server_id=server_id,
-        current_chain_id=chain_id,
-        excluded_channel_ids=excluded,
-        days=7,
-    )
-    discord_rows = cap_rows(discord_rows, config.DISCORD_CONTENT_TOKEN_BUDGET)
-    discord_rows.reverse()
-
-    chain_rows = db.get_chain_messages(chain_id) if chain_id else []
-    chain_capped_rev = cap_rows(list(reversed(chain_rows)), config.CHAIN_TOKEN_BUDGET)
-    chain_rows = list(reversed(chain_capped_rev))
-
-    loop = asyncio.get_event_loop()
-    meetup_md, handbook_md = await asyncio.gather(
-        loop.run_in_executor(None, fetch_meetup_markdown, config.MEETUP_URL, config.MEETUP_EVENT_COUNT),
-        loop.run_in_executor(None, fetch_handbook_markdown, _handbook_urls, config.HANDBOOK_TOKEN_BUDGET),
-    )
-
-    discord_md = render_discord_content(discord_rows)
-    system_prompt = build_system_prompt(
-        base=_base_prompt, meetup=meetup_md, handbook=handbook_md, discord=discord_md,
-    )
-    chain_messages = build_chain_messages(chain_rows, str(config.BOT_USER_ID))
-    messages = [{"role": "system", "content": system_prompt}, *chain_messages]
-
-    print(f"Calling LLM ({len(messages)} messages, "
-          f"~{len(system_prompt) // 4} sys tokens, "
-          f"{len(chain_messages)} chain turns)", flush=True)
-
+    # Start the typing indicator before the (slow) web fetches + LLM call so it
+    # shows up promptly rather than after context assembly.
     async with message.channel.typing():
+        discord_rows = db.get_recent_discord_messages(
+            server_id=server_id,
+            current_chain_id=chain_id,
+            excluded_channel_ids=excluded,
+            days=7,
+        )
+        discord_rows = cap_rows(discord_rows, config.DISCORD_CONTENT_TOKEN_BUDGET)
+        discord_rows.reverse()
+
+        chain_rows = db.get_chain_messages(chain_id) if chain_id else []
+        chain_capped_rev = cap_rows(list(reversed(chain_rows)), config.CHAIN_TOKEN_BUDGET)
+        chain_rows = list(reversed(chain_capped_rev))
+
+        loop = asyncio.get_event_loop()
+        meetup_md, handbook_md = await asyncio.gather(
+            loop.run_in_executor(None, fetch_meetup_markdown, config.MEETUP_URL, config.MEETUP_EVENT_COUNT),
+            loop.run_in_executor(None, fetch_handbook_markdown, _handbook_urls, config.HANDBOOK_TOKEN_BUDGET),
+        )
+
+        discord_md = render_discord_content(discord_rows)
+        system_prompt = build_system_prompt(
+            base=_base_prompt, meetup=meetup_md, handbook=handbook_md, discord=discord_md,
+        )
+        chain_messages = build_chain_messages(chain_rows, str(config.BOT_USER_ID))
+        messages = [{"role": "system", "content": system_prompt}, *chain_messages]
+
+        print(f"Calling LLM ({len(messages)} messages, "
+              f"~{len(system_prompt) // 4} sys tokens, "
+              f"{len(chain_messages)} chain turns)", flush=True)
+
         reply_text = await llm.get_completion(messages)
 
     if not reply_text:
