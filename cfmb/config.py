@@ -1,42 +1,53 @@
-from typing import Optional
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+_DEFAULT_HANDBOOK_URLS = (
+    "https://wiki.capefearmakersguild.org/makerspace-rules,"
+    "https://wiki.capefearmakersguild.org/personnel,"
+    "https://wiki.capefearmakersguild.org/en/machines/bambu-3d-printers,"
+    "https://wiki.capefearmakersguild.org/en/machines/carvera-cnc,"
+    "https://wiki.capefearmakersguild.org/en/machines/omtech-co2-laser,"
+    "https://wiki.capefearmakersguild.org/en/machines/omtech-fiber-laser"
+)
 
 
 class Config(BaseSettings):
     model_config = SettingsConfigDict(env_file="~/.cfmb", env_file_encoding="utf-8", extra="ignore")
 
+    # Discord
     DISCORD_BOT_TOKEN: str
-    OLLAMA_MODEL: str
     BOT_USER_ID: str
     DB_NAME: str
-    NUM_CLOSEST_MESSAGES: int
-    DISCORD_MAX_MESSAGE_LENGTH: int
-    ADMIN1_USER_ID: int
-    ADMIN2_USER_ID: int
-    ADMIN3_USER_ID: int = 0
-    OLLAMA_IMAGE_MODEL: Optional[str] = None
-    OLLAMA_EMBEDDING_MODEL: Optional[str] = None
-    NEWSLETTER_CHANNEL_ID: int
-    NEWSLETTER_HOUR_ET: int = 10
-    BOT_DISPLAY_NAME: str = "Bot"
-    NEWSLETTER_TITLE: str = "Daily Newsletter"
-    MEETUP_URL: Optional[str] = None
-    SUMMARY_SYSTEM_PROMPT: str
-    CURATION_SYSTEM_PROMPT: str
-    DEV_CHANNEL_ID: int
+    DISCORD_MAX_MESSAGE_LENGTH: int = 2000
+    DEV_CHANNEL_ID: int = 0
     DEV_EXCLUDED_CHANNELS: str = ""
-    BRAVE_SEARCH_API_KEY: str
-    LLM_TEMPERATURE: float
-    LLM_TOP_P: float
-    LLM_TOP_K: int
-    LLM_MIN_P: float
-    LLM_PRESENCE_PENALTY: float
-    LLM_REPEAT_PENALTY: float
+
+    # LLM — OpenRouter primary, Ollama fallback
+    OPENROUTER_API_KEY: str
+    OPENROUTER_MODEL: str
+    OLLAMA_MODEL: str = "gemma3:4b"
+
+    # Web context
+    MEETUP_URL: str = "https://www.meetup.com/cfmakers/events/?type=upcoming"
+    HANDBOOK_URLS: str = _DEFAULT_HANDBOOK_URLS
+
+    # Token budgets (all comfortably large — 128K context available)
+    MEETUP_EVENT_COUNT: int = 100
+    HANDBOOK_TOKEN_BUDGET: int = 100000
+    DISCORD_CONTENT_TOKEN_BUDGET: int = 100000
+    CHAIN_TOKEN_BUDGET: int = 10000
+
+    # Ollama sampler params (fallback path)
+    LLM_TEMPERATURE: float = 0.7
+    LLM_TOP_P: float = 0.9
+    LLM_TOP_K: int = 40
+    LLM_MIN_P: float = 0.0
+    LLM_PRESENCE_PENALTY: float = 0.0
+    LLM_REPEAT_PENALTY: float = 1.1
     LLM_NUM_CTX: int = 131072
-    OLLAMA_FAST_MODEL: str = ""
+
     LLM_TIMEOUT_SECONDS: int = 300
-    LLM_TIMEOUT_MESSAGE: str = "Comrade, our computational resources have been temporarily diverted to the greater good. Please try again later. 🐻"
+    LLM_TIMEOUT_MESSAGE: str = "Sorry, I took too long to respond. Try again."
 
 
 config = Config()

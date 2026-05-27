@@ -1,11 +1,9 @@
 audioop-lts; python_version>='3.13'
 beautifulsoup4
-Pillow
 discord
+httpx
 ollama
-requests
 pydantic
 pydantic-settings
 python-dotenv
-sqlite-vec
-tqdm
+requests
