@@ -70,6 +70,7 @@ def _extract_events_from_html(html: str) -> list[dict]:
     except json.JSONDecodeError:
         return []
     refs = _collect_refs(data)
+    now = datetime.now(tz=_ET)
     seen: set[tuple] = set()
     out: list[dict] = []
     for ev in _walk_event_shaped(data):
@@ -77,8 +78,24 @@ def _extract_events_from_html(html: str) -> list[dict]:
         if key in seen:
             continue
         seen.add(key)
+        if _event_is_past(ev.get("dateTime"), now):
+            continue
         out.append(_resolve_refs(ev, refs))
+    out.sort(key=lambda e: e.get("dateTime") or "")
     return out
+
+
+def _event_is_past(iso_dt: str | None, now: datetime) -> bool:
+    """True if the event's start is before `now`. Undated/unparseable events are kept."""
+    if not iso_dt:
+        return False
+    try:
+        dt = datetime.fromisoformat(iso_dt.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_ET)
+    return dt < now
 
 
 def _walk_event_shaped(obj):

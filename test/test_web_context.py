@@ -15,12 +15,27 @@ MEETUP_HTML = """
 <script id="__NEXT_DATA__" type="application/json">
 {"props": {"pageProps": {
   "events": [
-    {"title": "Open Make Night", "dateTime": "2026-06-01T18:00:00-04:00",
+    {"title": "Open Make Night", "dateTime": "2099-06-01T18:00:00-04:00",
      "eventUrl": "https://meetup.com/event/1", "venue": {"__ref": "Venue:1"}},
-    {"title": "Laser Class", "dateTime": "2026-06-08T18:00:00-04:00",
+    {"title": "Laser Class", "dateTime": "2099-06-08T18:00:00-04:00",
      "eventUrl": "https://meetup.com/event/2", "venue": {"__ref": "Venue:1"}}
   ],
   "cache": {"Venue:1": {"__typename": "Venue", "id": "1", "name": "CFMG"}}
+}}}
+</script>
+</head><body><p>Events</p></body></html>
+"""
+
+MEETUP_HTML_WITH_PAST = """
+<html><head>
+<script id="__NEXT_DATA__" type="application/json">
+{"props": {"pageProps": {
+  "events": [
+    {"title": "Ancient Event", "dateTime": "2000-01-01T18:00:00-04:00",
+     "eventUrl": "https://meetup.com/event/old"},
+    {"title": "Future Event", "dateTime": "2099-06-08T18:00:00-04:00",
+     "eventUrl": "https://meetup.com/event/new"}
+  ]
 }}}
 </script>
 </head><body><p>Events</p></body></html>
@@ -162,6 +177,15 @@ def test_fetch_meetup_parses_real_html(mocker):
     assert "Laser Class" in out
     # Venue ref was resolved to the normalized cache entry.
     assert "CFMG" in out
+
+
+def test_fetch_meetup_drops_past_events(mocker):
+    response = mocker.Mock(text=MEETUP_HTML_WITH_PAST)
+    response.raise_for_status = mocker.Mock()
+    mocker.patch("cfmb.web_context.requests.get", return_value=response)
+    out = fetch_meetup_markdown("http://x", 100)
+    assert "Future Event" in out
+    assert "Ancient Event" not in out
 
 
 def test_fetch_handbook_empty_list_returns_empty():
