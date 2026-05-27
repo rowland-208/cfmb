@@ -63,7 +63,10 @@ async def on_message(message):
         username=message.author.display_name,
         channel_id=str(message.channel.id),
         channel_name=getattr(message.channel, "name", None),
-        content=message.content,
+        # clean_content resolves <@id>/<@&id>/<#id> mentions to readable
+        # @names/#channels, so the model never sees raw numeric IDs (which it
+        # otherwise mistakes the bot's own trigger-mention for "your user ID").
+        content=message.clean_content,
         reply_to_message_id=reply_to,
         is_mention=is_mention,
         bot_user_id=bot_id_str,

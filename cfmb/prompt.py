@@ -51,12 +51,19 @@ def build_system_prompt(*, base: str, meetup: str, handbook: str, discord: str) 
 def build_chain_messages(rows: list[dict], bot_user_id: str) -> list[dict]:
     """Maps oldest-first chain rows to {'role', 'content'} dicts.
 
-    Role is derived from user_id: bot_user_id → 'assistant', else 'user'.
+    Role is derived from user_id: bot_user_id → 'assistant', else 'user'. User
+    turns are prefixed with the speaker's username (`username: content`) so the
+    model can tell who is talking and answer questions like "who am I"; the
+    bot's own turns are left unprefixed.
     """
     messages: list[dict] = []
     for r in rows:
-        role = "assistant" if str(r["user_id"]) == str(bot_user_id) else "user"
-        messages.append({"role": role, "content": r.get("content") or ""})
+        content = r.get("content") or ""
+        if str(r["user_id"]) == str(bot_user_id):
+            messages.append({"role": "assistant", "content": content})
+        else:
+            username = r.get("username") or "unknown"
+            messages.append({"role": "user", "content": f"{username}: {content}"})
     return messages
 
 

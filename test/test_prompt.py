@@ -91,22 +91,30 @@ def test_build_system_prompt_omits_only_meetup_when_empty():
     assert "## Recent guild activity" in out
 
 
-def test_build_chain_messages_derives_role():
+def test_build_chain_messages_derives_role_and_prefixes_user_turns():
     rows = [
-        {"user_id": "user1", "content": "hi"},
-        {"user_id": "BOT", "content": "hello back"},
-        {"user_id": "user2", "content": "yo"},
+        {"user_id": "user1", "username": "Alice", "content": "hi"},
+        {"user_id": "BOT", "username": "CFMB", "content": "hello back"},
+        {"user_id": "user2", "username": "Bob", "content": "yo"},
     ]
     out = build_chain_messages(rows, bot_user_id="BOT")
+    # User turns are attributed with the speaker's name so the model knows who
+    # is talking; the bot's own turns stay unprefixed.
     assert out == [
-        {"role": "user", "content": "hi"},
+        {"role": "user", "content": "Alice: hi"},
         {"role": "assistant", "content": "hello back"},
-        {"role": "user", "content": "yo"},
+        {"role": "user", "content": "Bob: yo"},
     ]
+
+
+def test_build_chain_messages_user_turn_missing_username():
+    rows = [{"user_id": "user1", "content": "hi"}]
+    out = build_chain_messages(rows, bot_user_id="BOT")
+    assert out == [{"role": "user", "content": "unknown: hi"}]
 
 
 def test_build_chain_messages_handles_int_str_mismatch():
-    rows = [{"user_id": "12345", "content": "hi"}]
+    rows = [{"user_id": "12345", "username": "CFMB", "content": "hi"}]
     out = build_chain_messages(rows, bot_user_id=12345)
     assert out == [{"role": "assistant", "content": "hi"}]
 
