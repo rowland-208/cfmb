@@ -17,9 +17,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sqlite3
 import sys
 from pathlib import Path
+
+import requests
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
@@ -120,6 +123,22 @@ def migrate_old_to_new(prod_db_path: Path, tmp_db_path: Path, bot_user_id: str) 
           file=sys.stderr)
 
 
+def _call_openrouter(messages: list[dict], model: str, api_key: str) -> str:
+    """One-shot OpenAI-compatible chat completion via OpenRouter."""
+    resp = requests.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={"model": model, "messages": messages},
+        timeout=300,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    return data["choices"][0]["message"]["content"]
+
+
 def process_sim(
     db: DatabaseManager,
     sim: dict,
@@ -134,6 +153,7 @@ def process_sim(
     bot_user_id: str,
     no_web: bool,
     with_llm: bool,
+    openrouter_model: str | None,
     now_iso: str | None,
 ) -> None:
     chain_id = db.write_message(
@@ -193,19 +213,35 @@ def process_sim(
 
     if with_llm:
         print()
-        print("--- LLM RESPONSE ---")
-        from cfmb.config import config
-        from cfmb.llm_client import LLMClient
-        llm = LLMClient(config.OLLAMA_MODEL)
         messages = [{"role": "system", "content": system_prompt}, *chain_messages]
-        response = asyncio.run(llm.get_completion(messages))
-        print(response or "(empty response)")
+        if openrouter_model:
+            print(f"--- LLM RESPONSE (openrouter: {openrouter_model}) ---")
+            api_key = os.environ.get("OPENROUTER_API_KEY")
+            if not api_key:
+                print("(no OPENROUTER_API_KEY set)")
+                return
+            try:
+                response = _call_openrouter(messages, openrouter_model, api_key)
+            except Exception as e:
+                print(f"(openrouter error: {e})")
+                return
+            print(response or "(empty response)")
+        else:
+            from cfmb.config import config
+            from cfmb.llm_client import LLMClient
+            print(f"--- LLM RESPONSE (ollama: {config.OLLAMA_MODEL}) ---")
+            llm = LLMClient(config.OLLAMA_MODEL)
+            response = asyncio.run(llm.get_completion(messages))
+            print(response or "(empty response)")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sim-file", default=str(REPO_ROOT / "etc" / "sim_messages.json"))
     parser.add_argument("--with-llm", action="store_true")
+    parser.add_argument("--openrouter", default=None, metavar="MODEL",
+                        help="Use OpenRouter with this model id instead of local Ollama "
+                             "(e.g. google/gemma-4-31b-it:free). Requires OPENROUTER_API_KEY.")
     parser.add_argument("--no-web", action="store_true",
                         help="Skip live meetup/handbook fetches (faster iteration).")
     parser.add_argument("--bot-user-id", default="999999999",
@@ -255,6 +291,7 @@ def main() -> None:
             bot_user_id=args.bot_user_id,
             no_web=args.no_web,
             with_llm=args.with_llm,
+            openrouter_model=args.openrouter,
             now_iso=anchor_now_iso,
         )
         print()

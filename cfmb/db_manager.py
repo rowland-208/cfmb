@@ -100,6 +100,19 @@ class DatabaseManager:
             print(f"DB read error: {e}")
             return None
 
+    def is_message_from_user(self, message_id: str, user_id: str) -> bool:
+        """Returns True if the given message_id was sent by user_id. False otherwise."""
+        try:
+            with self._get_connection() as conn:
+                row = conn.execute(
+                    "SELECT 1 FROM messages WHERE message_id = ? AND user_id = ?",
+                    (message_id, user_id),
+                ).fetchone()
+            return row is not None
+        except sqlite3.Error as e:
+            print(f"DB read error: {e}")
+            return False
+
     def get_chain_messages(self, chain_id: str) -> list[dict]:
         """Returns chain rows oldest-first."""
         try:
